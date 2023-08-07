@@ -2,6 +2,9 @@
 
 <br>
 
+[A](#desc)
+
+
 ## PINOUT PCB
 
 ### Kairimi
@@ -37,6 +40,7 @@
 ```
 <br>
 
+<a name="desc"></a>
 ## Normas de convivencia de codigo
 
 * #### 1.  Convencion de nomenclatura:
