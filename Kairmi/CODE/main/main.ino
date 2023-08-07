@@ -171,6 +171,7 @@ class Button {
 
 private:
   int pin;
+  int cant_pin;
 
 public:
   Button(int pin_in);
@@ -195,19 +196,22 @@ void Button::WaitPressing() {
 
 // Definicion de clase PID
 
+#define LIMIT_LEN 8
 
-class PID {
+class CNY {
 
 private:
   int map_min = 0;
   int map_max = 1000;
-  int values_read[CNY70_CANT];
-  int max_value_read[CNY70_CANT];
-  int min_value_read[CNY70_CANT];
-  int Cny70_pins[8] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
+  int cant_pins;
+  int value;
+  int values_read[LIMIT_LEN];
+  int max_value_read[LIMIT_LEN];
+  int min_value_read[LIMIT_LEN];
+  int Cny70_pins[LIMIT_LEN];
 
 public:
-  PID();
+  CNY();
   void InitializeReadings();
   void Calibrate();
   int ReadFloor();
@@ -215,29 +219,25 @@ public:
   int color_deadline = 1600;
 };
 
-PID::PID() {
+_countCNY::CNY(int cny70_pins_in, int cant) {
+  cant_pins = cant;
+  Cny70_pins = cny70_pins_in;
 }
 
-int PID::ReadTatamiColor() {
 
-  if (analogRead(LEFT_CNY) > color_deadline) return LEFT;
-  else if (analogRead(RIGHT_CNY) > color_deadline) return RIGHT;
-  else return WHITE;
-}
+void CNY::InitializeReadings() {
 
-void PID::InitializeReadings() {
-
-  for (int i = 0; i < CNY70_CANT; i++) {
+  for (int i = 0; i < cant_pins; i++) {
     max_value_read[i] = -100000;
     min_value_read[i] = 100000;
   }
 }
 
-void PID::Calibrate() {
+void CNY::Calibrate() {
 
   int i;
 
-  for (i = 0; i < CNY70_CANT; i++) {
+  for (i = 0; i < cant_pins; i++) {
     int value = analogRead(Cny70_pins[i]);
     min_value_read[i] = constrain(min_value_read[i], -100000, value);
     max_value_read[i] = constrain(max_value_read[i], value, 100000);
@@ -249,7 +249,7 @@ void PID::Calibrate() {
 
 int PID::ReadFloor() {
 
-  for (int i = 0; i < CNY70_CANT / 2; i++) {
+  for (int i = 0; i < cant_pins / 2; i++) {
     values_read[i] = analogRead(Cny70_pins[i]);
     values_read[i] = map(values_read[i], min_value_read[i], max_value_read[i], map_max, map_min);
     values_read[i] = constrain(values_read[i], map_min, map_max);
@@ -257,7 +257,7 @@ int PID::ReadFloor() {
   }
 
   Serial.println();
-  for (int i = CNY70_CANT / 2; i < CNY70_CANT; i++) {
+  for (int i = cant_pins / 2; i < cant_pins; i++) {
     values_read[i] = analogRead(Cny70_pins[i]);
     values_read[i] = map(values_read[i], min_value_read[i], max_value_read[i], map_min, map_max);
     values_read[i] = constrain(values_read[i], map_min, map_max);
@@ -269,6 +269,17 @@ int PID::ReadFloor() {
   return (-16 * values_read[0]) + (-8 * values_read[1]) + (-4 * values_read[2]) + (-2 * values_read[3]) + (2 * values_read[4]) + (4 * values_read[5]) + (8 * values_read[6]) + (16 * values_read[7]);
 
   //return (-16 * values_read[7]) + (-8 * values_read[6]) + (-4 * values_read[5]) + (-2 * values_read[4]) + (2 * values_read[3]) + (4 * values_read[2]) + (8 * values_read[1]) + (16 * values_read[0]);
+}
+
+
+int CNY::ReadTatamiColor(sensor) {
+
+  int value;
+  for (int i = 0; i < cant_pins; i++) {
+
+    value = map(sensor, min_value_read[i], max_value_read[i], map_min, map_max);
+    if(value > color_deadline) return sensor;
+}
 }
 
 // Creacion de objetos
@@ -283,7 +294,8 @@ Sharp *center_sharp = new Sharp(SENSOR_6);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
 Sharp *right_side_sharp = new Sharp(SENSOR_5);
 Buzzer *buzzer = new Buzzer(BUZZER);
-PID *pid = new PID();
+CNY *line_follower = new CNY({ SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 }, 8);
+CNY *area_cleaner = new CNY({LEFT_CNY, RIGHT_CNY, BACK_CNY}, 3);
 
 // ------------------ INICIALIZADOR ---------------------------------------------------------------------------
 
@@ -365,7 +377,7 @@ float pid_min_average = (kp * -15600) + ki * 0 + (kd * (-15600 - 15600));
 
 void line_follower_loop() {
 
-  actual_value = pid->ReadFloor();
+  actual_value = line_follower->ReadFloor();
   //Serial.println(actual_value);
 
   error = actual_value;
@@ -402,12 +414,12 @@ void line_follower_setup() {
     0);             // Core where the task should run
   */
 
-  pid->InitializeReadings();
+  line_follower->InitializeReadings();
 
   if(DEBUG)Serial.println("CALIBRANDO, select");
 
   while (count_button->IsPressed() == NO) {
-    pid->Calibrate();
+    line_follower->Calibrate();
   }
 
   if(DEBUG)Serial.println("Calibrado");
@@ -496,9 +508,9 @@ void radio_controlled_setup() {
 
 
 #define LINE_REBOUND_TIME 1000
-#define TURN_VELOCITY 80
+#define TURN_VELOCITY 60
 #define TURN_ADJUSTMENT_DIFERENCE 70
-#define MAX_VELOCITY 220
+#define MAX_VELOCITY 150
 #define BLIND_LIMIT_TIME 5000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define SEEK_VELOCITY 70
@@ -516,8 +528,8 @@ unsigned long start_rebound;
 
 void area_cleaner_loop() {
 
-  if (pid->ReadTatamiColor() != WHITE) {
-    last_cny_value = pid->ReadTatamiColor();
+  if (area_cleaner->ReadTatamiColor() != WHITE) {
+    last_cny_value = area_cleaner->ReadTatamiColor();
     binary_area_cleaner_sum = -1;
   } else {
     binary_area_cleaner_sum = (left_sharp->ReadDigital(10)
@@ -538,13 +550,20 @@ void area_cleaner_loop() {
       }
 
       start_rebound = millis();
+      int error_count = 0;
+      while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
 
-      while (millis() < start_rebound + LINE_REBOUND_TIME) {
+        if(++error_count > 100){
+        while(true){
+        leftMotor-> Stop();
+        rightMotor-> Stop();          
+        }
+        }
+        
+        leftMotor-> Backward(100);
+        rightMotor-> Backward(100);
 
-        leftMotor->Backward(100);
-        rightMotor->Backward(100);
-
-        if (analogRead(BACK_CNY) > pid.color_deadline) {
+        if (analogRead(BACK_CNY) > 1500) {
 
           if (last_cny_value == LEFT) {
             leftMotor->Forward(200);
@@ -583,6 +602,8 @@ void area_cleaner_loop() {
 
 
       */
+
+      // Si el tiempo total es mayor al tiempo total despues de rebotar 
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
         if (pid->ReadTatamiColor() == WHITE) {
@@ -615,10 +636,6 @@ void area_cleaner_loop() {
       rightMotor->Forward(TURN_VELOCITY);
       break;
 
-    case 8:
-      leftMotor->Backward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
-      rightMotor->Backward(TURN_VELOCITY);
-      break;
 
     default:
       leftMotor->Forward(MAX_VELOCITY);
@@ -627,9 +644,18 @@ void area_cleaner_loop() {
   }
 }
 
-
+int Cny70_despejar_area[3] = {};
 
 void area_cleaner_setup() {
+  
+  area_cleaner->InitializeReadings();
+
+  if(DEBUG)Serial.println("CALIBRANDO, select");
+
+  while (count_button->IsPressed() == NO) {
+    area_cleaner->Calibrate();
+  }
+
   last_rebound_time = millis();
   initialize(area_cleaner_loop);
 }
