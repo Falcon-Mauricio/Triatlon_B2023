@@ -1,10 +1,12 @@
 # Triatlon_B2023
 
-<br>
+### Indice
+[PINOUT PCB](#pinout)<br>
+[Normas de convivencia de codigo](#normas)<br>
+[Organizacion del repositorio y colaboracion](#colab)<br>
+[Imagenes](#imag)<br>
 
-[A](#desc)
-
-
+<a name="pinout"></a>
 ## PINOUT PCB
 
 ### Kairimi
@@ -40,7 +42,7 @@
 ```
 <br>
 
-<a name="desc"></a>
+<a name="normas"></a>
 ## Normas de convivencia de codigo
 
 * #### 1.  Convencion de nomenclatura:
@@ -74,6 +76,7 @@
 
 <br>
 
+<a name="colab"></a>
 ## Organizacion del repositorio y colaboracion
 
 ### Arbol de carpetas:
@@ -107,6 +110,7 @@ Cuando se alcance una version funcional del robot tagerla marcando las diferenci
 
 <br>
 
+<a name="imag"></a>
 ## Imagenes 3Ds / PCBs
 
 ### KAIRIMI:
