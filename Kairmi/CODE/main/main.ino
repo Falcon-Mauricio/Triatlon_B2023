@@ -71,13 +71,13 @@ void Buzzer::Beep(int n, int duration) {
   for (int i = 1; i < n; i++) {
 
     digitalWrite(pin, HIGH);
-    if(DEBUG)Serial.println("beeep");
+    if (DEBUG) Serial.println("beeep");
     delay(duration);
     digitalWrite(pin, LOW);
     delay(duration);
   }
   digitalWrite(pin, HIGH);
-  if(DEBUG)Serial.println("beeep");
+  if (DEBUG) Serial.println("beeep");
   delay(duration);
   digitalWrite(pin, LOW);
 }
@@ -162,7 +162,7 @@ int Sharp::ReadDigital(int samples) {
   }
 
   int average = sum / samples;
-  if(DEBUG) Serial.println(average);
+  if (DEBUG) Serial.println(average);
   return average > DISTANCE_DEADLINE;
 }
 
@@ -171,6 +171,7 @@ class Button {
 
 private:
   int pin;
+  int cant_pin;
 
 public:
   Button(int pin_in);
@@ -195,49 +196,52 @@ void Button::WaitPressing() {
 
 // Definicion de clase PID
 
+#define LIMIT_LEN 8
 
-class PID {
+class CNY {
 
 private:
   int map_min = 0;
   int map_max = 1000;
-  int values_read[CNY70_CANT];
-  int max_value_read[CNY70_CANT];
-  int min_value_read[CNY70_CANT];
-  int Cny70_pins[8] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
+  int cant_pins;
+  int value;
+  int values_read[LIMIT_LEN];
+  int max_value_read[LIMIT_LEN];
+  int min_value_read[LIMIT_LEN];
+  int *Cny70_pins;
 
 public:
-  PID();
+  CNY(int cny70_pins_in[], int cant);
   void InitializeReadings();
   void Calibrate();
   int ReadFloor();
   int ReadTatamiColor();
-  int color_deadline = 1600;
+  int color_deadline = 500;
 };
 
-PID::PID() {
+CNY::CNY(int cny70_pins_in[], int cant) {
+
+  cant_pins = cant;
+  Cny70_pins = new int[cant_pins];
+  for (int i = 0; i < cant_pins; ++i) {
+    Cny70_pins[i] = cny70_pins_in[i];
+  }
 }
 
-int PID::ReadTatamiColor() {
 
-  if (analogRead(LEFT_CNY) > color_deadline) return LEFT;
-  else if (analogRead(RIGHT_CNY) > color_deadline) return RIGHT;
-  else return WHITE;
-}
+void CNY::InitializeReadings() {
 
-void PID::InitializeReadings() {
-
-  for (int i = 0; i < CNY70_CANT; i++) {
+  for (int i = 0; i < cant_pins; i++) {
     max_value_read[i] = -100000;
     min_value_read[i] = 100000;
   }
 }
 
-void PID::Calibrate() {
+void CNY::Calibrate() {
 
   int i;
 
-  for (i = 0; i < CNY70_CANT; i++) {
+  for (i = 0; i < cant_pins; i++) {
     int value = analogRead(Cny70_pins[i]);
     min_value_read[i] = constrain(min_value_read[i], -100000, value);
     max_value_read[i] = constrain(max_value_read[i], value, 100000);
@@ -247,9 +251,9 @@ void PID::Calibrate() {
   }
 }
 
-int PID::ReadFloor() {
+int CNY::ReadFloor() {
 
-  for (int i = 0; i < CNY70_CANT / 2; i++) {
+  for (int i = 0; i < cant_pins / 2; i++) {
     values_read[i] = analogRead(Cny70_pins[i]);
     values_read[i] = map(values_read[i], min_value_read[i], max_value_read[i], map_max, map_min);
     values_read[i] = constrain(values_read[i], map_min, map_max);
@@ -257,7 +261,7 @@ int PID::ReadFloor() {
   }
 
   Serial.println();
-  for (int i = CNY70_CANT / 2; i < CNY70_CANT; i++) {
+  for (int i = cant_pins / 2; i < cant_pins; i++) {
     values_read[i] = analogRead(Cny70_pins[i]);
     values_read[i] = map(values_read[i], min_value_read[i], max_value_read[i], map_min, map_max);
     values_read[i] = constrain(values_read[i], map_min, map_max);
@@ -269,6 +273,18 @@ int PID::ReadFloor() {
   return (-16 * values_read[0]) + (-8 * values_read[1]) + (-4 * values_read[2]) + (-2 * values_read[3]) + (2 * values_read[4]) + (4 * values_read[5]) + (8 * values_read[6]) + (16 * values_read[7]);
 
   //return (-16 * values_read[7]) + (-8 * values_read[6]) + (-4 * values_read[5]) + (-2 * values_read[4]) + (2 * values_read[3]) + (4 * values_read[2]) + (8 * values_read[1]) + (16 * values_read[0]);
+}
+
+
+int CNY::ReadTatamiColor() {
+
+  int value;
+  for (int i = 0; i < cant_pins; i++) {
+    value = analogRead(Cny70_pins[i]);
+    value = map(value, min_value_read[i], max_value_read[i], map_min, map_max);
+    if (value > color_deadline) return Cny70_pins[i];
+  }
+  return WHITE;
 }
 
 // Creacion de objetos
@@ -283,19 +299,21 @@ Sharp *center_sharp = new Sharp(SENSOR_6);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
 Sharp *right_side_sharp = new Sharp(SENSOR_5);
 Buzzer *buzzer = new Buzzer(BUZZER);
-PID *pid = new PID();
+int line_follower_array[] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
+int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY, BACK_CNY };
+CNY *line_follower = new CNY(line_follower_array, 8);
+CNY *area_cleaner = new CNY(area_cleaner_array, 3);
 
 // ------------------ INICIALIZADOR ---------------------------------------------------------------------------
 
 void initialize(void (*category_loop_function)()) {
 
   confirm_button->WaitPressing();
-  if(DEBUG)Serial.println("iniciando");
+  if (DEBUG) Serial.println("iniciando");
   buzzer->Beep(3, 1000);
-  if(DEBUG)Serial.println("Arranque brrr");
+  if (DEBUG) Serial.println("Arranque brrr");
 
   while (true) category_loop_function();
-  
 }
 
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
@@ -365,7 +383,7 @@ float pid_min_average = (kp * -15600) + ki * 0 + (kd * (-15600 - 15600));
 
 void line_follower_loop() {
 
-  actual_value = pid->ReadFloor();
+  actual_value = line_follower->ReadFloor();
   //Serial.println(actual_value);
 
   error = actual_value;
@@ -387,7 +405,7 @@ void line_follower_loop() {
 
 void line_follower_setup() {
 
-  if(DEBUG)Serial.println("en follower");
+  if (DEBUG) Serial.println("en follower");
 
   //BT.begin("line_follower_debug");
 
@@ -402,15 +420,15 @@ void line_follower_setup() {
     0);             // Core where the task should run
   */
 
-  pid->InitializeReadings();
+  line_follower->InitializeReadings();
 
-  if(DEBUG)Serial.println("CALIBRANDO, select");
+  if (DEBUG) Serial.println("CALIBRANDO, select");
 
   while (count_button->IsPressed() == NO) {
-    pid->Calibrate();
+    line_follower->Calibrate();
   }
 
-  if(DEBUG)Serial.println("Calibrado");
+  if (DEBUG) Serial.println("Calibrado");
 
   initialize(line_follower_loop);
 }
@@ -487,7 +505,8 @@ void radio_controlled_loop() {
 void radio_controlled_setup() {
 
   PS4.begin();
-  while (!PS4.isConnected());
+  while (!PS4.isConnected())
+    ;
   buzzer->Use(1000);
   PS4.attach(radio_controlled_loop);
 }
@@ -496,9 +515,9 @@ void radio_controlled_setup() {
 
 
 #define LINE_REBOUND_TIME 1000
-#define TURN_VELOCITY 80
+#define TURN_VELOCITY 60
 #define TURN_ADJUSTMENT_DIFERENCE 70
-#define MAX_VELOCITY 220
+#define MAX_VELOCITY 150
 #define BLIND_LIMIT_TIME 5000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define SEEK_VELOCITY 70
@@ -516,10 +535,10 @@ unsigned long start_rebound;
 
 void area_cleaner_loop() {
 
-  if (pid->ReadTatamiColor() != WHITE) {
-    last_cny_value = pid->ReadTatamiColor();
-    binary_area_cleaner_sum = -1;
-  } else {
+  last_cny_value = area_cleaner->ReadTatamiColor();
+
+  if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
+  else {
     binary_area_cleaner_sum = (left_sharp->ReadDigital(10)
                                + center_sharp->ReadDigital(10) * 2
                                + right_sharp->ReadDigital(10) * 4);
@@ -538,20 +557,27 @@ void area_cleaner_loop() {
       }
 
       start_rebound = millis();
+      //int error_count = 0;
+      while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
 
-      while (millis() < start_rebound + LINE_REBOUND_TIME) {
+        //if(++error_count > 100){
+        //while(true){
+        //leftMotor-> Stop();
+        //rightMotor-> Stop();
+        //}
+        //}
 
         leftMotor->Backward(100);
         rightMotor->Backward(100);
 
-        if (analogRead(BACK_CNY) > pid.color_deadline) {
+        if (analogRead(BACK_CNY) > 1500) {
 
           if (last_cny_value == LEFT) {
             leftMotor->Forward(200);
             rightMotor->Forward(120);
             delay(500);
 
-          } else if (last_cny_value == RIGHT){
+          } else if (last_cny_value == RIGHT) {
             leftMotor->Forward(120);
             rightMotor->Forward(200);
             delay(500);
@@ -583,9 +609,11 @@ void area_cleaner_loop() {
 
 
       */
+
+      // Si el tiempo total es mayor al tiempo total despues de rebotar
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
-        if (pid->ReadTatamiColor() == WHITE) {
+        if (area_cleaner->ReadTatamiColor() == WHITE) {
           leftMotor->Forward(130);
           rightMotor->Forward(200);
         } else rebound_flag = NO;
@@ -615,10 +643,6 @@ void area_cleaner_loop() {
       rightMotor->Forward(TURN_VELOCITY);
       break;
 
-    case 8:
-      leftMotor->Backward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
-      rightMotor->Backward(TURN_VELOCITY);
-      break;
 
     default:
       leftMotor->Forward(MAX_VELOCITY);
@@ -627,9 +651,18 @@ void area_cleaner_loop() {
   }
 }
 
-
+int Cny70_despejar_area[3] = {};
 
 void area_cleaner_setup() {
+
+  area_cleaner->InitializeReadings();
+
+  if (DEBUG) Serial.println("CALIBRANDO, select");
+
+  while (count_button->IsPressed() == NO) {
+    area_cleaner->Calibrate();
+  }
+
   last_rebound_time = millis();
   initialize(area_cleaner_loop);
 }
@@ -641,8 +674,9 @@ void mode_selection() {
 
   int counter = 0;
 
-  while (confirm_button->IsPressed() == NO) {
+  while (true) {
 
+    
     if (count_button->IsPressed() == YES) {
 
       counter++;
@@ -653,32 +687,33 @@ void mode_selection() {
       //Serial.println("Counter %f", counter);
       delay(100);
     }
+    if(confirm_button->IsPressed() == YES && counter != 0) break;
   }
   switch (counter) {
 
     case 1:
       black_side = LEFT;
       line_follower_setup();
-      if(DEBUG)Serial.println("seguidor de linea");
+      if (DEBUG) Serial.println("seguidor de linea");
 
       break;
 
     case 2:
       black_side = RIGHT;
       line_follower_setup();
-      if(DEBUG)Serial.println("line follower");
+      if (DEBUG) Serial.println("line follower");
 
       break;
 
     case 3:
       area_cleaner_setup();
-      if(DEBUG)Serial.println("area cleaner");
+      if (DEBUG) Serial.println("area cleaner");
 
       break;
 
     case 4:
       radio_controlled_setup();
-      if(DEBUG)Serial.println("radio_control");
+      if (DEBUG) Serial.println("radio_control");
 
       break;
   }
