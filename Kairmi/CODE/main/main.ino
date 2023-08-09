@@ -71,13 +71,13 @@ void Buzzer::Beep(int n, int duration) {
   for (int i = 1; i < n; i++) {
 
     digitalWrite(pin, HIGH);
-    if(DEBUG)Serial.println("beeep");
+    if (DEBUG) Serial.println("beeep");
     delay(duration);
     digitalWrite(pin, LOW);
     delay(duration);
   }
   digitalWrite(pin, HIGH);
-  if(DEBUG)Serial.println("beeep");
+  if (DEBUG) Serial.println("beeep");
   delay(duration);
   digitalWrite(pin, LOW);
 }
@@ -162,7 +162,7 @@ int Sharp::ReadDigital(int samples) {
   }
 
   int average = sum / samples;
-  if(DEBUG) Serial.println(average);
+  if (DEBUG) Serial.println(average);
   return average > DISTANCE_DEADLINE;
 }
 
@@ -208,20 +208,24 @@ private:
   int values_read[LIMIT_LEN];
   int max_value_read[LIMIT_LEN];
   int min_value_read[LIMIT_LEN];
-  int Cny70_pins[LIMIT_LEN];
+  int *Cny70_pins;
 
 public:
-  CNY();
+  CNY(int cny70_pins_in[], int cant);
   void InitializeReadings();
   void Calibrate();
   int ReadFloor();
   int ReadTatamiColor();
-  int color_deadline = 1600;
+  int color_deadline = 500;
 };
 
-_countCNY::CNY(int cny70_pins_in, int cant) {
+CNY::CNY(int cny70_pins_in[], int cant) {
+
   cant_pins = cant;
-  Cny70_pins = cny70_pins_in;
+  Cny70_pins = new int[cant_pins];
+  for (int i = 0; i < cant_pins; ++i) {
+    Cny70_pins[i] = cny70_pins_in[i];
+  }
 }
 
 
@@ -247,7 +251,7 @@ void CNY::Calibrate() {
   }
 }
 
-int PID::ReadFloor() {
+int CNY::ReadFloor() {
 
   for (int i = 0; i < cant_pins / 2; i++) {
     values_read[i] = analogRead(Cny70_pins[i]);
@@ -272,14 +276,15 @@ int PID::ReadFloor() {
 }
 
 
-int CNY::ReadTatamiColor(sensor) {
+int CNY::ReadTatamiColor() {
 
   int value;
   for (int i = 0; i < cant_pins; i++) {
-
-    value = map(sensor, min_value_read[i], max_value_read[i], map_min, map_max);
-    if(value > color_deadline) return sensor;
-}
+    value = analogRead(Cny70_pins[i]);
+    value = map(value, min_value_read[i], max_value_read[i], map_min, map_max);
+    if (value > color_deadline) return Cny70_pins[i];
+  }
+  return WHITE;
 }
 
 // Creacion de objetos
@@ -294,20 +299,21 @@ Sharp *center_sharp = new Sharp(SENSOR_6);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
 Sharp *right_side_sharp = new Sharp(SENSOR_5);
 Buzzer *buzzer = new Buzzer(BUZZER);
-CNY *line_follower = new CNY({ SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 }, 8);
-CNY *area_cleaner = new CNY({LEFT_CNY, RIGHT_CNY, BACK_CNY}, 3);
+int line_follower_array[] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
+int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY, BACK_CNY };
+CNY *line_follower = new CNY(line_follower_array, 8);
+CNY *area_cleaner = new CNY(area_cleaner_array, 3);
 
 // ------------------ INICIALIZADOR ---------------------------------------------------------------------------
 
 void initialize(void (*category_loop_function)()) {
 
   confirm_button->WaitPressing();
-  if(DEBUG)Serial.println("iniciando");
+  if (DEBUG) Serial.println("iniciando");
   buzzer->Beep(3, 1000);
-  if(DEBUG)Serial.println("Arranque brrr");
+  if (DEBUG) Serial.println("Arranque brrr");
 
   while (true) category_loop_function();
-  
 }
 
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
@@ -399,7 +405,7 @@ void line_follower_loop() {
 
 void line_follower_setup() {
 
-  if(DEBUG)Serial.println("en follower");
+  if (DEBUG) Serial.println("en follower");
 
   //BT.begin("line_follower_debug");
 
@@ -416,13 +422,13 @@ void line_follower_setup() {
 
   line_follower->InitializeReadings();
 
-  if(DEBUG)Serial.println("CALIBRANDO, select");
+  if (DEBUG) Serial.println("CALIBRANDO, select");
 
   while (count_button->IsPressed() == NO) {
     line_follower->Calibrate();
   }
 
-  if(DEBUG)Serial.println("Calibrado");
+  if (DEBUG) Serial.println("Calibrado");
 
   initialize(line_follower_loop);
 }
@@ -499,7 +505,8 @@ void radio_controlled_loop() {
 void radio_controlled_setup() {
 
   PS4.begin();
-  while (!PS4.isConnected());
+  while (!PS4.isConnected())
+    ;
   buzzer->Use(1000);
   PS4.attach(radio_controlled_loop);
 }
@@ -528,10 +535,10 @@ unsigned long start_rebound;
 
 void area_cleaner_loop() {
 
-  if (area_cleaner->ReadTatamiColor() != WHITE) {
-    last_cny_value = area_cleaner->ReadTatamiColor();
-    binary_area_cleaner_sum = -1;
-  } else {
+  last_cny_value = area_cleaner->ReadTatamiColor();
+
+  if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
+  else {
     binary_area_cleaner_sum = (left_sharp->ReadDigital(10)
                                + center_sharp->ReadDigital(10) * 2
                                + right_sharp->ReadDigital(10) * 4);
@@ -550,18 +557,18 @@ void area_cleaner_loop() {
       }
 
       start_rebound = millis();
-      int error_count = 0;
+      //int error_count = 0;
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
 
-        if(++error_count > 100){
-        while(true){
-        leftMotor-> Stop();
-        rightMotor-> Stop();          
-        }
-        }
-        
-        leftMotor-> Backward(100);
-        rightMotor-> Backward(100);
+        //if(++error_count > 100){
+        //while(true){
+        //leftMotor-> Stop();
+        //rightMotor-> Stop();
+        //}
+        //}
+
+        leftMotor->Backward(100);
+        rightMotor->Backward(100);
 
         if (analogRead(BACK_CNY) > 1500) {
 
@@ -570,7 +577,7 @@ void area_cleaner_loop() {
             rightMotor->Forward(120);
             delay(500);
 
-          } else if (last_cny_value == RIGHT){
+          } else if (last_cny_value == RIGHT) {
             leftMotor->Forward(120);
             rightMotor->Forward(200);
             delay(500);
@@ -603,10 +610,10 @@ void area_cleaner_loop() {
 
       */
 
-      // Si el tiempo total es mayor al tiempo total despues de rebotar 
+      // Si el tiempo total es mayor al tiempo total despues de rebotar
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
-        if (pid->ReadTatamiColor() == WHITE) {
+        if (area_cleaner->ReadTatamiColor() == WHITE) {
           leftMotor->Forward(130);
           rightMotor->Forward(200);
         } else rebound_flag = NO;
@@ -647,10 +654,10 @@ void area_cleaner_loop() {
 int Cny70_despejar_area[3] = {};
 
 void area_cleaner_setup() {
-  
+
   area_cleaner->InitializeReadings();
 
-  if(DEBUG)Serial.println("CALIBRANDO, select");
+  if (DEBUG) Serial.println("CALIBRANDO, select");
 
   while (count_button->IsPressed() == NO) {
     area_cleaner->Calibrate();
@@ -667,8 +674,9 @@ void mode_selection() {
 
   int counter = 0;
 
-  while (confirm_button->IsPressed() == NO) {
+  while (true) {
 
+    
     if (count_button->IsPressed() == YES) {
 
       counter++;
@@ -679,32 +687,33 @@ void mode_selection() {
       //Serial.println("Counter %f", counter);
       delay(100);
     }
+    if(confirm_button->IsPressed() == YES && counter != 0) break;
   }
   switch (counter) {
 
     case 1:
       black_side = LEFT;
       line_follower_setup();
-      if(DEBUG)Serial.println("seguidor de linea");
+      if (DEBUG) Serial.println("seguidor de linea");
 
       break;
 
     case 2:
       black_side = RIGHT;
       line_follower_setup();
-      if(DEBUG)Serial.println("line follower");
+      if (DEBUG) Serial.println("line follower");
 
       break;
 
     case 3:
       area_cleaner_setup();
-      if(DEBUG)Serial.println("area cleaner");
+      if (DEBUG) Serial.println("area cleaner");
 
       break;
 
     case 4:
       radio_controlled_setup();
-      if(DEBUG)Serial.println("radio_control");
+      if (DEBUG) Serial.println("radio_control");
 
       break;
   }
