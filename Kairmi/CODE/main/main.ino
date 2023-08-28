@@ -3,7 +3,8 @@
 
 #include <BluetoothSerial.h>
 
-#define DEBUG 1
+#define DEBUG 0
+#define DEBUG_VEL 1
 // Motores
 #define M2A 22
 #define M2B 23
@@ -11,14 +12,15 @@
 #define M1A 21
 
 // Sensores
-#define SENSOR_1 13
 #define SENSOR_2 27
 #define SENSOR_3 26
+#define SENSOR_1 13
 #define SENSOR_4 25
 #define SENSOR_5 34
 #define SENSOR_6 35
 #define SENSOR_7 32
 #define SENSOR_8 33
+
 #define LEFT_CNY 27
 #define RIGHT_CNY 25
 #define BACK_CNY 26
@@ -208,7 +210,7 @@ private:
   int values_read[LIMIT_LEN];
   int max_value_read[LIMIT_LEN];
   int min_value_read[LIMIT_LEN];
-  int *Cny70_pins;
+  int Cny70_pins[LIMIT_LEN];
 
 public:
   CNY(int cny70_pins_in[], int cant);
@@ -222,7 +224,6 @@ public:
 CNY::CNY(int cny70_pins_in[], int cant) {
 
   cant_pins = cant;
-  Cny70_pins = new int[cant_pins];
   for (int i = 0; i < cant_pins; ++i) {
     Cny70_pins[i] = cny70_pins_in[i];
   }
@@ -232,19 +233,17 @@ CNY::CNY(int cny70_pins_in[], int cant) {
 void CNY::InitializeReadings() {
 
   for (int i = 0; i < cant_pins; i++) {
-    max_value_read[i] = -100000;
-    min_value_read[i] = 100000;
+    max_value_read[i] = -10000;
+    min_value_read[i] = 10000;
   }
 }
 
 void CNY::Calibrate() {
 
-  int i;
-
-  for (i = 0; i < cant_pins; i++) {
+  for (int i = 0; i < cant_pins; i++) {
     int value = analogRead(Cny70_pins[i]);
-    min_value_read[i] = constrain(min_value_read[i], -100000, value);
-    max_value_read[i] = constrain(max_value_read[i], value, 100000);
+    if (value < min_value_read[i]) min_value_read[i] = value;
+    else if (value > max_value_read[i]) max_value_read[i] = value;
   }
   if (DEBUG) {
     //Serial.println("CNY_%d: %d, %d ", i, min_value_read[i], max_value_read[i]);
@@ -277,14 +276,17 @@ int CNY::ReadFloor() {
 
 
 int CNY::ReadTatamiColor() {
-
   int value;
+  int detected = WHITE;
   for (int i = 0; i < cant_pins; i++) {
     value = analogRead(Cny70_pins[i]);
+
     value = map(value, min_value_read[i], max_value_read[i], map_min, map_max);
-    if (value > color_deadline) return Cny70_pins[i];
+    if (value > color_deadline) {
+      detected = Cny70_pins[i];
+    }
   }
-  return WHITE;
+  return detected;
 }
 
 // Creacion de objetos
@@ -293,16 +295,16 @@ Motor *rightMotor = new Motor(M1A, M1B, 14, 13);
 Motor *leftMotor = new Motor(M2A, M2B, 12, 11);
 Button *confirm_button = new Button(PUSH_2);
 Button *count_button = new Button(PUSH_1);
-Sharp *left_sharp = new Sharp(SENSOR_7);
-Sharp *right_sharp = new Sharp(SENSOR_8);
-Sharp *center_sharp = new Sharp(SENSOR_6);
+Sharp *left_sharp = new Sharp(SENSOR_8);
+Sharp *right_sharp = new Sharp(SENSOR_5);
+Sharp *center_sharp = new Sharp(SENSOR_7);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
 Sharp *right_side_sharp = new Sharp(SENSOR_5);
 Buzzer *buzzer = new Buzzer(BUZZER);
 int line_follower_array[] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
-int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY, BACK_CNY };
+int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY};
 CNY *line_follower = new CNY(line_follower_array, 8);
-CNY *area_cleaner = new CNY(area_cleaner_array, 3);
+CNY *area_cleaner = new CNY(area_cleaner_array, 2);
 
 // ------------------ INICIALIZADOR ---------------------------------------------------------------------------
 
@@ -345,10 +347,14 @@ void Motor_control(int value) {
 
   right_vel = constrain(right_vel, 0, 255);
   left_vel = constrain(left_vel, 0, 255);
+  if(right_vel > 255) right_vel = 255;
+  if(left_vel > 255) right_vel = 255;
 
-  Serial.println(left_vel);
-  Serial.println(right_vel);
-
+  if(DEBUG_VEL){
+    Serial.println(left_vel);
+    Serial.println(right_vel);
+    delay(150);
+  }
   if (all_white) {
 
     if (black_side == RIGHT) {
@@ -515,9 +521,9 @@ void radio_controlled_setup() {
 
 
 #define LINE_REBOUND_TIME 1000
-#define TURN_VELOCITY 60
+#define TURN_VELOCITY 150
 #define TURN_ADJUSTMENT_DIFERENCE 70
-#define MAX_VELOCITY 150
+#define MAX_VELOCITY 200
 #define BLIND_LIMIT_TIME 5000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define SEEK_VELOCITY 70
@@ -535,8 +541,9 @@ unsigned long start_rebound;
 
 void area_cleaner_loop() {
 
+  area_cleaner->Calibrate();
   last_cny_value = area_cleaner->ReadTatamiColor();
-
+  
   if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
   else {
     binary_area_cleaner_sum = (left_sharp->ReadDigital(10)
@@ -559,25 +566,24 @@ void area_cleaner_loop() {
       start_rebound = millis();
       //int error_count = 0;
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
-
         //if(++error_count > 100){
         //while(true){
         //leftMotor-> Stop();
         //rightMotor-> Stop();
         //}
         //}
-
+ 
         leftMotor->Backward(100);
         rightMotor->Backward(100);
-
-        if (analogRead(BACK_CNY) > 1500) {
-
-          if (last_cny_value == LEFT) {
+        
+        if (analogRead(BACK_CNY) > 2000) {
+          Serial.println("In back");
+          if (last_cny_value == LEFT_CNY) {
             leftMotor->Forward(200);
             rightMotor->Forward(120);
             delay(500);
 
-          } else if (last_cny_value == RIGHT) {
+          } else if (last_cny_value == RIGHT_CNY) {
             leftMotor->Forward(120);
             rightMotor->Forward(200);
             delay(500);
@@ -643,7 +649,6 @@ void area_cleaner_loop() {
       rightMotor->Forward(TURN_VELOCITY);
       break;
 
-
     default:
       leftMotor->Forward(MAX_VELOCITY);
       rightMotor->Forward(MAX_VELOCITY);
@@ -651,7 +656,6 @@ void area_cleaner_loop() {
   }
 }
 
-int Cny70_despejar_area[3] = {};
 
 void area_cleaner_setup() {
 
@@ -676,7 +680,7 @@ void mode_selection() {
 
   while (true) {
 
-    
+
     if (count_button->IsPressed() == YES) {
 
       counter++;
@@ -687,7 +691,7 @@ void mode_selection() {
       //Serial.println("Counter %f", counter);
       delay(100);
     }
-    if(confirm_button->IsPressed() == YES && counter != 0) break;
+    if (confirm_button->IsPressed() == YES && counter != 0) break;
   }
   switch (counter) {
 
