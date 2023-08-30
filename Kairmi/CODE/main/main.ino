@@ -1,7 +1,6 @@
-
 #include <PS4Controller.h>
-
 #include <BluetoothSerial.h>
+#include "headers.h"
 
 #define DEBUG 0
 #define DEBUG_VEL 1
@@ -86,49 +85,6 @@ void Buzzer::Beep(int n, int duration) {
 
 // Definicion de clase para motores
 
-class Motor {
-
-private:
-  int pin_a;
-  int pin_b;
-  int ch_a;
-  int ch_b;
-  int frequency = 1000;
-  int resolution = 8;
-
-public:
-  Motor(int pin_a_in, int pin_b_in, int ch_a_in, int ch_b_in);
-  void Forward(int vel);
-  void Backward(int vel);
-  void Stop();
-};
-
-// Constructor clase motores
-Motor::Motor(int pin_a_in, int pin_b_in, int ch_a_in, int ch_b_in) {
-  pin_a = pin_a_in;
-  pin_b = pin_b_in;
-  ch_a = ch_a_in;
-  ch_b = ch_b_in;
-
-  ledcSetup(ch_a, frequency, resolution);
-  ledcSetup(ch_b, frequency, resolution);
-  ledcAttachPin(pin_a, ch_a);
-  ledcAttachPin(pin_b, ch_b);
-}
-
-// Metodos motores
-void Motor::Forward(int vel) {
-  ledcWrite(ch_a, vel);
-  ledcWrite(ch_b, 0);
-}
-void Motor::Backward(int vel) {
-  ledcWrite(ch_a, 0);
-  ledcWrite(ch_b, vel);
-}
-void Motor::Stop() {
-  ledcWrite(ch_a, 0);
-  ledcWrite(ch_b, 0);
-}
 
 // Definicion de clase para sensores Sharp
 
@@ -291,8 +247,8 @@ int CNY::ReadTatamiColor() {
 
 // Creacion de objetos
 
-Motor *rightMotor = new Motor(M1A, M1B, 14, 13);
-Motor *leftMotor = new Motor(M2A, M2B, 12, 11);
+Motor rightMotor(M1A, M1B, 14, 13);
+Motor leftMotor(M2A, M2B, 12, 11);
 Button *confirm_button = new Button(PUSH_2);
 Button *count_button = new Button(PUSH_1);
 Sharp *left_sharp = new Sharp(SENSOR_8);
@@ -359,18 +315,18 @@ void Motor_control(int value) {
 
     if (black_side == RIGHT) {
 
-      leftMotor->Forward(0);
-      rightMotor->Forward(VEL_WHITE_FLOOR);
+      leftMotor.Forward(0);
+      rightMotor.Forward(VEL_WHITE_FLOOR);
     } else {
-      rightMotor->Forward(0);
-      leftMotor->Forward(VEL_WHITE_FLOOR);
+      rightMotor.Forward(0);
+      leftMotor.Forward(VEL_WHITE_FLOOR);
     }
   } else {
 
-    if (right_vel < VEL_MIN) rightMotor->Backward(VEL_MIN + (VEL_MIN - right_vel));
-    else rightMotor->Forward(right_vel);
-    if (left_vel < VEL_MIN) leftMotor->Backward(VEL_MIN + (VEL_MIN - left_vel));
-    else leftMotor->Forward(left_vel);
+    if (right_vel < VEL_MIN) rightMotor.Backward(VEL_MIN + (VEL_MIN - right_vel));
+    else rightMotor.Forward(right_vel);
+    if (left_vel < VEL_MIN) leftMotor.Backward(VEL_MIN + (VEL_MIN - left_vel));
+    else leftMotor.Forward(left_vel);
   }
 }
 
@@ -465,46 +421,46 @@ void radio_controlled_loop() {
   }
 
   if (y_axis_value >= 50) {
-    rightMotor->Forward(velocity);
-    leftMotor->Forward(velocity);
+    rightMotor.Forward(velocity);
+    leftMotor.Forward(velocity);
 
     if (x_axis_value >= 50) {
 
-      leftMotor->Forward(velocity);
-      rightMotor->Forward(turn_velocity);
+      leftMotor.Forward(velocity);
+      rightMotor.Forward(turn_velocity);
 
     }
 
     else if (x_axis_value <= -50) {
 
-      leftMotor->Forward(turn_velocity);
-      rightMotor->Forward(velocity);
+      leftMotor.Forward(turn_velocity);
+      rightMotor.Forward(velocity);
     }
   } else if (y_axis_value <= -50)  //Move car Backward
   {
-    rightMotor->Backward(velocity);
-    leftMotor->Backward(velocity);
+    rightMotor.Backward(velocity);
+    leftMotor.Backward(velocity);
 
     if (x_axis_value >= 50) {
-      rightMotor->Backward(turn_velocity);
-      leftMotor->Backward(velocity);
+      rightMotor.Backward(turn_velocity);
+      leftMotor.Backward(velocity);
     } else if (x_axis_value <= -50) {
-      rightMotor->Backward(velocity);
-      leftMotor->Backward(turn_velocity);
+      rightMotor.Backward(velocity);
+      leftMotor.Backward(turn_velocity);
     }
   } else if (x_axis_value >= 50)  //Move car Right
   {
-    rightMotor->Backward(150);
-    leftMotor->Forward(250);
+    rightMotor.Backward(150);
+    leftMotor.Forward(250);
 
   } else if (x_axis_value <= -50)  //Move car Left
   {
-    rightMotor->Forward(250);
-    leftMotor->Backward(150);
+    rightMotor.Forward(250);
+    leftMotor.Backward(150);
   } else  //Stop the car
   {
-    rightMotor->Stop();
-    leftMotor->Stop();
+    rightMotor.Stop();
+    leftMotor.Stop();
   }
 }
 
@@ -568,24 +524,24 @@ void area_cleaner_loop() {
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
         //if(++error_count > 100){
         //while(true){
-        //leftMotor-> Stop();
-        //rightMotor-> Stop();
+        //leftMotor. Stop();
+        //rightMotor. Stop();
         //}
         //}
  
-        leftMotor->Backward(100);
-        rightMotor->Backward(100);
+        leftMotor.Backward(100);
+        rightMotor.Backward(100);
         
         if (analogRead(BACK_CNY) > 2000) {
           Serial.println("In back");
           if (last_cny_value == LEFT_CNY) {
-            leftMotor->Forward(200);
-            rightMotor->Forward(120);
+            leftMotor.Forward(200);
+            rightMotor.Forward(120);
             delay(500);
 
           } else if (last_cny_value == RIGHT_CNY) {
-            leftMotor->Forward(120);
-            rightMotor->Forward(200);
+            leftMotor.Forward(120);
+            rightMotor.Forward(200);
             delay(500);
           }
           break;
@@ -606,13 +562,12 @@ void area_cleaner_loop() {
 
             if (millis() > seeking_time + LIMIT_BLIND_TIME) {
 
-              leftMotor->Forward(100);
-              rightMotor->Forward(100);
+              leftMotor.Forward(100);
+              rightMotor.Forward(100);
 
               if (millis() > seeking_time + LIMIT_BLIND_TIME + LIMIT_BLIND_ADVANCING_TIME) start_seeking_flag == YES;
               else{
       
-
 
       */
 
@@ -620,15 +575,15 @@ void area_cleaner_loop() {
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
         if (area_cleaner->ReadTatamiColor() == WHITE) {
-          leftMotor->Forward(130);
-          rightMotor->Forward(200);
+          leftMotor.Forward(130);
+          rightMotor.Forward(200);
         } else rebound_flag = NO;
       } else if (last_value == LEFT) {
-        leftMotor->Backward(TURN_VELOCITY);
-        rightMotor->Forward(TURN_VELOCITY);
+        leftMotor.Backward(TURN_VELOCITY);
+        rightMotor.Forward(TURN_VELOCITY);
       } else {
-        leftMotor->Forward(TURN_VELOCITY);
-        rightMotor->Backward(TURN_VELOCITY);
+        leftMotor.Forward(TURN_VELOCITY);
+        rightMotor.Backward(TURN_VELOCITY);
       }
       //}
       // }
@@ -638,20 +593,20 @@ void area_cleaner_loop() {
     case 1:
     case 3:
       last_value = LEFT;
-      leftMotor->Forward(TURN_VELOCITY);
-      rightMotor->Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
+      leftMotor.Forward(TURN_VELOCITY);
+      rightMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
       break;
 
     case 4:
     case 6:
       last_value = RIGHT;
-      leftMotor->Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
-      rightMotor->Forward(TURN_VELOCITY);
+      leftMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
+      rightMotor.Forward(TURN_VELOCITY);
       break;
 
     default:
-      leftMotor->Forward(MAX_VELOCITY);
-      rightMotor->Forward(MAX_VELOCITY);
+      leftMotor.Forward(MAX_VELOCITY);
+      rightMotor.Forward(MAX_VELOCITY);
       break;
   }
 }

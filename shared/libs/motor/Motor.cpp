@@ -1,5 +1,5 @@
-#include "Motor.h"
-
+#include "motor.h"
+#include <Arduino.h>
 
 Motor::Motor(int pin_a_in, int pin_b_in, int ch_a_in, int ch_b_in) {
   pin_a = pin_a_in;
