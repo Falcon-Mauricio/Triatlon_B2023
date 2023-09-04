@@ -1,6 +1,6 @@
 #include <PS4Controller.h>
 #include <BluetoothSerial.h>
-#include "headers.h"
+#include "motor.h"
 
 #define DEBUG 0
 #define DEBUG_VEL 1
@@ -477,23 +477,32 @@ void radio_controlled_setup() {
 
 
 #define LINE_REBOUND_TIME 1000
-#define TURN_VELOCITY 150
-#define TURN_ADJUSTMENT_DIFERENCE 70
-#define MAX_VELOCITY 200
-#define BLIND_LIMIT_TIME 5000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
-#define SEEK_VELOCITY 70
+
+#define TURN_VELOCITY 80
+#define TURN_ADJUSTMENT_DIFERENCE 60
+#define MAX_VELOCITY 120
+#define BLIND_LIMIT_TIME 4000
 
 
-int binary_area_cleaner_sum;
-int start_seeking_flag = YES;
+// timers
 unsigned long seeking_time;
+unsigned long last_rebound_time;
+unsigned long start_rebound;
+unsigned long saw_right_time;
+
+// flags
 int saw_right = NO;
 int last_value = LEFT;
+int rebound_flag = NO;
+int first_blind = YES;
+
+// variables
+
+int binary_area_cleaner_sum;
 int last_cny_value;
-unsigned long last_rebound_time;
-int rebound_flag = 0;
-unsigned long start_rebound;
+
+
 
 void area_cleaner_loop() {
 
@@ -506,34 +515,33 @@ void area_cleaner_loop() {
                                + center_sharp->ReadDigital(10) * 2
                                + right_sharp->ReadDigital(10) * 4);
   }
-  saw_right = right_side_sharp->ReadDigital(10);
 
+  if(right_side_sharp->ReadDigital(10)) {
+    saw_right = YES;
+    saw_right_time = millis();
+    }
+  
   switch (binary_area_cleaner_sum) {
 
     case -1:
 
-      if (saw_right) {
+      if(saw_right == NO) last_value = LEFT;
+      else{
+        leftMotor.Backward(100);
+        rightMotor.Backward(100); 
+        delay(millis() - saw_right_time);
         last_value = RIGHT;
         saw_right = NO;
-      } else {
-        last_value = LEFT;
       }
 
       start_rebound = millis();
-      //int error_count = 0;
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
-        //if(++error_count > 100){
-        //while(true){
-        //leftMotor. Stop();
-        //rightMotor. Stop();
-        //}
-        //}
- 
+  
         leftMotor.Backward(100);
         rightMotor.Backward(100);
         
         if (analogRead(BACK_CNY) > 2000) {
-          Serial.println("In back");
+       
           if (last_cny_value == LEFT_CNY) {
             leftMotor.Forward(200);
             rightMotor.Forward(120);
@@ -553,53 +561,37 @@ void area_cleaner_loop() {
       break;
 
     case 0:  //no ve nada
-      /*
-            if (start_seeking_flag == YES) {
-              seeking_time = millis();
-              start_seeking_flag = NO;
 
-            }
-
-            if (millis() > seeking_time + LIMIT_BLIND_TIME) {
-
-              leftMotor.Forward(100);
-              rightMotor.Forward(100);
-
-              if (millis() > seeking_time + LIMIT_BLIND_TIME + LIMIT_BLIND_ADVANCING_TIME) start_seeking_flag == YES;
-              else{
       
-
-      */
-
-      // Si el tiempo total es mayor al tiempo total despues de rebotar
+      
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
         if (area_cleaner->ReadTatamiColor() == WHITE) {
           leftMotor.Forward(130);
           rightMotor.Forward(200);
+          first_blind = NO;
         } else rebound_flag = NO;
-      } else if (last_value == LEFT) {
+      } 
+      else if (last_value == LEFT) {
         leftMotor.Backward(TURN_VELOCITY);
         rightMotor.Forward(TURN_VELOCITY);
-      } else {
+      } 
+      else {
         leftMotor.Forward(TURN_VELOCITY);
         rightMotor.Backward(TURN_VELOCITY);
       }
-      //}
-      // }
+
 
       break;
 
     case 1:
     case 3:
-      last_value = LEFT;
       leftMotor.Forward(TURN_VELOCITY);
       rightMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
       break;
 
     case 4:
     case 6:
-      last_value = RIGHT;
       leftMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
       rightMotor.Forward(TURN_VELOCITY);
       break;
