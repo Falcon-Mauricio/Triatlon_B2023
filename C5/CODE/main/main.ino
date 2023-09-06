@@ -5,10 +5,13 @@
 #define DEBUG 0
 #define DEBUG_VEL 0
 // Motores
-#define M2A 22
-#define M2B 23
-#define M1B 19
-#define M1A 21
+// LEFT
+#define M1A 19
+#define M1B 21
+
+// RIGHT
+#define M2A 23
+#define M2B 22
 
 // Sensores
 #define SENSOR_2 27

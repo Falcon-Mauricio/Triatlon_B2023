@@ -1,6 +1,6 @@
-#define SENSOR_2 27
-#define SENSOR_3 26
 #define SENSOR_1 13
+#define SENSOR_3 26
+#define SENSOR_2 27
 #define SENSOR_4 25
 #define SENSOR_5 34
 #define SENSOR_6 35
