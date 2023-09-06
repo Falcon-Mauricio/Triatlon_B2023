@@ -276,7 +276,7 @@ void initialize(void (*category_loop_function)()) {
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
 
 #define VEL_WHITE_FLOOR 100
-#define VEL_MIN 80
+#define COMPENSATION_DEADLINE 80
 #define PID_VEL_MIN 110
 //#define PID_VEL_MIN 150 pista naba 7seg y pista 2019 7seg
 //#define PID_VEL_MIN 220
@@ -317,9 +317,9 @@ void Motor_control(int value) {
     }
   } else {
 
-    if (right_vel < VEL_MIN) rightMotor.Backward(VEL_MIN + (VEL_MIN - right_vel));
+    if (right_vel < COMPENSATION_DEADLINE) rightMotor.Backward(COMPENSATION_DEADLINE + (COMPENSATION_DEADLINE - right_vel));
     else rightMotor.Forward(right_vel);
-    if (left_vel < VEL_MIN) leftMotor.Backward(VEL_MIN + (VEL_MIN - left_vel));
+    if (left_vel < COMPENSATION_DEADLINE) leftMotor.Backward(COMPENSATION_DEADLINE + (COMPENSATION_DEADLINE - left_vel));
     else leftMotor.Forward(left_vel);
   }
 }
@@ -510,7 +510,7 @@ void area_cleaner_loop() {
   delay(1000);
   } 
   */
-  
+
   area_cleaner->Calibrate();
   last_cny_value = area_cleaner->ReadTatamiColor();
   
