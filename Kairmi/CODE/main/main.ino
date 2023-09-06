@@ -3,7 +3,7 @@
 #include "motor.h"
 
 #define DEBUG 0
-#define DEBUG_VEL 1
+#define DEBUG_VEL 0
 // Motores
 #define M2A 22
 #define M2B 23
@@ -92,7 +92,6 @@ void Buzzer::Beep(int n, int duration) {
 #define MAX_READING 3000
 #define MIN_MAP 0
 #define MAX_MAP 100
-#define DISTANCE_DEADLINE 20
 
 
 class Sharp {
@@ -102,26 +101,26 @@ private:
 
 public:
   Sharp(int pin_in);
-  int ReadDigital(int samples);
+  int ReadDigital(int samples, int distance_deadline);
 };
 
 Sharp::Sharp(int pin_in) {
   pin = pin_in;
 }
 
-int Sharp::ReadDigital(int samples) {
+int Sharp::ReadDigital(int samples, int distance_deadline) {
 
   int sum = 0;
   int reading = 0;
 
-  for (int i = 0; i <= samples; i++) {
+  for (int i = 0; i < samples; i++) {
     reading = analogRead(pin);
     sum += map(reading, MIN_READING, MAX_READING, MIN_MAP, MAX_MAP);
   }
 
   int average = sum / samples;
   if (DEBUG) Serial.println(average);
-  return average > DISTANCE_DEADLINE;
+  return average > distance_deadline;
 }
 
 
@@ -306,11 +305,6 @@ void Motor_control(int value) {
   if(right_vel > 255) right_vel = 255;
   if(left_vel > 255) right_vel = 255;
 
-  if(DEBUG_VEL){
-    Serial.println(left_vel);
-    Serial.println(right_vel);
-    delay(150);
-  }
   if (all_white) {
 
     if (black_side == RIGHT) {
@@ -479,14 +473,16 @@ void radio_controlled_setup() {
 #define LINE_REBOUND_TIME 1000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 
-#define TURN_VELOCITY 80
+int seek_velocity = 80;
+int max_distance = 20;
+int blind_turn_diference = 60;
 #define TURN_ADJUSTMENT_DIFERENCE 60
 #define MAX_VELOCITY 120
-#define BLIND_LIMIT_TIME 4000
+#define BLIND_LIMIT_TIME 3000
 
 
 // timers
-unsigned long seeking_time;
+unsigned long seeking_time; 
 unsigned long last_rebound_time;
 unsigned long start_rebound;
 unsigned long saw_right_time;
@@ -496,6 +492,7 @@ int saw_right = NO;
 int last_value = LEFT;
 int rebound_flag = NO;
 int first_blind = YES;
+int first_loop = YES;
 
 // variables
 
@@ -506,17 +503,25 @@ int last_cny_value;
 
 void area_cleaner_loop() {
 
+  /*
+  if(first_loop){
+  leftMotor.Forward(120);
+  rightMotor.Forward(120);
+  delay(1000);
+  } 
+  */
+  
   area_cleaner->Calibrate();
   last_cny_value = area_cleaner->ReadTatamiColor();
   
   if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
   else {
-    binary_area_cleaner_sum = (left_sharp->ReadDigital(10)
-                               + center_sharp->ReadDigital(10) * 2
-                               + right_sharp->ReadDigital(10) * 4);
+    binary_area_cleaner_sum = (left_sharp->ReadDigital(10, max_distance)
+                               + center_sharp->ReadDigital(10, max_distance) * 2
+                               + right_sharp->ReadDigital(10, max_distance) * 4);
   }
 
-  if(right_side_sharp->ReadDigital(10)) {
+  if(right_side_sharp->ReadDigital(10, max_distance)) {
     saw_right = YES;
     saw_right_time = millis();
     }
@@ -570,30 +575,43 @@ void area_cleaner_loop() {
           leftMotor.Forward(130);
           rightMotor.Forward(200);
           first_blind = NO;
-        } else rebound_flag = NO;
+          } else rebound_flag = NO;
       } 
       else if (last_value == LEFT) {
-        leftMotor.Backward(TURN_VELOCITY);
-        rightMotor.Forward(TURN_VELOCITY);
+        
+        if(first_blind == YES) {
+          leftMotor.Backward(seek_velocity);
+          rightMotor.Forward(seek_velocity);
+        }
+        else {
+          rightMotor.Forward(seek_velocity + blind_turn_diference); 
+          leftMotor.Forward(seek_velocity);
+        }
       } 
       else {
-        leftMotor.Forward(TURN_VELOCITY);
-        rightMotor.Backward(TURN_VELOCITY);
-      }
+        if(first_blind == YES) {
+          rightMotor.Backward(seek_velocity);
+          leftMotor.Forward(seek_velocity);
+        }
+        else {
+          leftMotor.Forward(seek_velocity + blind_turn_diference); 
+          rightMotor.Forward(seek_velocity);
+        }
+        }
 
 
       break;
 
     case 1:
     case 3:
-      leftMotor.Forward(TURN_VELOCITY);
-      rightMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
+      leftMotor.Forward(seek_velocity);
+      rightMotor.Forward(seek_velocity + TURN_ADJUSTMENT_DIFERENCE);
       break;
 
     case 4:
     case 6:
-      leftMotor.Forward(TURN_VELOCITY + TURN_ADJUSTMENT_DIFERENCE);
-      rightMotor.Forward(TURN_VELOCITY);
+      leftMotor.Forward(seek_velocity + TURN_ADJUSTMENT_DIFERENCE);
+      rightMotor.Forward(seek_velocity);
       break;
 
     default:
