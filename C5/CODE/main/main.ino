@@ -5,27 +5,27 @@
 #define DEBUG 0
 #define DEBUG_VEL 0
 // Motores
-// LEFT
-#define M1A 19
-#define M1B 21
+//
+#define M2A 19
+#define M2B 21
 
 // RIGHT
-#define M2A 23
-#define M2B 22
+#define M1A 23
+#define M1B 22
 
 // Sensores
+#define SENSOR_1 13
 #define SENSOR_2 27
 #define SENSOR_3 26
-#define SENSOR_1 13
 #define SENSOR_4 25
 #define SENSOR_5 34
 #define SENSOR_6 35
 #define SENSOR_7 32
 #define SENSOR_8 33
 
-#define LEFT_CNY 27
-#define RIGHT_CNY 25
-#define BACK_CNY 26
+#define LEFT_CNY SENSOR_5
+#define RIGHT_CNY SENSOR_4
+#define BACK_CNY SENSOR_2
 
 int Cny70_pins[] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
 
@@ -225,8 +225,6 @@ int CNY::ReadFloor() {
     //Serial.println(values_read[i]);
   }
 
-
-
   return (-16 * values_read[0]) + (-8 * values_read[1]) + (-4 * values_read[2]) + (-2 * values_read[3]) + (2 * values_read[4]) + (4 * values_read[5]) + (8 * values_read[6]) + (16 * values_read[7]);
 
   //return (-16 * values_read[7]) + (-8 * values_read[6]) + (-4 * values_read[5]) + (-2 * values_read[4]) + (2 * values_read[3]) + (4 * values_read[2]) + (8 * values_read[1]) + (16 * values_read[0]);
@@ -253,14 +251,14 @@ Motor rightMotor(M1A, M1B, 14, 13);
 Motor leftMotor(M2A, M2B, 12, 11);
 Button *confirm_button = new Button(PUSH_2);
 Button *count_button = new Button(PUSH_1);
-Sharp *left_sharp = new Sharp(SENSOR_8);
-Sharp *right_sharp = new Sharp(SENSOR_5);
+Sharp *left_sharp = new Sharp(SENSOR_6);
+Sharp *right_sharp = new Sharp(SENSOR_8);
 Sharp *center_sharp = new Sharp(SENSOR_7);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
-Sharp *right_side_sharp = new Sharp(SENSOR_5);
+Sharp *right_side_sharp = new Sharp(SENSOR_3);
 Buzzer *buzzer = new Buzzer(BUZZER);
 int line_follower_array[] = { SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8 };
-int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY};
+int area_cleaner_array[] = { LEFT_CNY, RIGHT_CNY };
 CNY *line_follower = new CNY(line_follower_array, 8);
 CNY *area_cleaner = new CNY(area_cleaner_array, 2);
 
@@ -278,13 +276,16 @@ void initialize(void (*category_loop_function)()) {
 
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
 
-#define VEL_WHITE_FLOOR 100
-#define COMPENSATION_DEADLINE 80
+#define VEL_WHITE_FLOOR 200
+#define COMPENSATION_DEADLINE 90
 #define PID_VEL_MIN 110
+float gain = 180;
+float kp = 10;
+float kd = 0;
 //#define PID_VEL_MIN 150 pista naba 7seg y pista 2019 7seg
 //#define PID_VEL_MIN 220
 bool all_white = false;
-int in_straight = YES;
+int in_straight = NO;
 int right_vel = 0;
 int left_vel = 0;
 int base_velocity = PID_VEL_MIN;
@@ -296,16 +297,16 @@ int min_value_read[CNY70_CANT];
 void Motor_control(int value) {
 
 
-  if(in_straight){
-    if(millis() > time_stamp + 500){
+  if (in_straight) {
+    if (millis() > time_stamp + 500) {
       time_stamp = millis();
       base_velocity += 5;
     }
-  }else base_velocity = PID_VEL_MIN;
-  
+  } else base_velocity = PID_VEL_MIN;
+
 
   if (black_side == LEFT) {
-    
+
     right_vel = base_velocity - value;
     left_vel = base_velocity + value;
   } else {
@@ -315,18 +316,18 @@ void Motor_control(int value) {
 
   right_vel = constrain(right_vel, 0, 255);
   left_vel = constrain(left_vel, 0, 255);
-  if(right_vel > 255) right_vel = 255;
-  if(left_vel > 255) right_vel = 255;
+  if (right_vel > 255) right_vel = 255;
+  if (left_vel > 255) right_vel = 255;
 
   if (all_white) {
 
     if (black_side == RIGHT) {
 
-      leftMotor.Forward(0);
-      rightMotor.Forward(VEL_WHITE_FLOOR);
-    } else {
-      rightMotor.Forward(0);
       leftMotor.Forward(VEL_WHITE_FLOOR);
+      rightMotor.Forward(0);
+    } else {
+      rightMotor.Forward(VEL_WHITE_FLOOR);
+      leftMotor.Forward(0);
     }
   } else {
 
@@ -337,45 +338,44 @@ void Motor_control(int value) {
   }
 }
 
-float kp = 10;
-float kd = 0;
 float ki = 0;
 int error = 0;
 int last_error = 0;
 int actual_value = 0;
 int integral = 0;
 int PID_calc;
-float gain = 120;
+int motor_PID;
+
 float pid_max_average = (kp * 15600) + ki * 0 + (kd * (15600 - -15600));
 float pid_min_average = (kp * -15600) + ki * 0 + (kd * (-15600 - 15600));
 
 
 void line_follower_loop() {
-  
+
   actual_value = line_follower->ReadFloor();
-  //Serial.println(actual_value);
+  Serial.println(actual_value);
 
   error = actual_value;
   integral += error;
   integral = constrain(integral, -100000, 100000);
 
-  all_white = actual_value < -26000;
+  //all_white = actual_value < -26000;
 
   PID_calc = (kp * error + ki * integral + kd * (error - last_error));
-  
-  PID_calc = map(PID_calc, pid_min_average, pid_max_average, -1 * gain, gain);
-  
-  if(PID_calc < 50 && PID_calc > -50)in_straight = YES;
-  else in_straight = NO;
-  
-  
-  
+
+  motor_PID = map(PID_calc, pid_min_average, pid_max_average, -1 * gain, gain);
+  Serial.println(motor_PID);
+  //delay(400);
+
+  //if(PID_calc < 50 && PID_calc > -50)in_straight = YES;
+  //else in_straight = NO;
+
   last_error = error;
 
-  if (actual_value < pid_min_average) pid_min_average = actual_value;
-  if (actual_value > pid_max_average) pid_max_average = actual_value;
+  if (PID_calc < pid_min_average) pid_min_average = PID_calc;
+  if (PID_calc > pid_max_average) pid_max_average = PID_calc;
   //Serial.println("PID");
-  Motor_control(PID_calc);
+  Motor_control(motor_PID);
 }
 
 void line_follower_setup() {
@@ -501,7 +501,7 @@ int blind_turn_diference = 60;
 
 
 // timers
-unsigned long seeking_time; 
+unsigned long seeking_time;
 unsigned long last_rebound_time;
 unsigned long start_rebound;
 unsigned long saw_right_time;
@@ -532,7 +532,7 @@ void area_cleaner_loop() {
 
   area_cleaner->Calibrate();
   last_cny_value = area_cleaner->ReadTatamiColor();
-  
+
   if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
   else {
     binary_area_cleaner_sum = (left_sharp->ReadDigital(10, max_distance)
@@ -540,19 +540,19 @@ void area_cleaner_loop() {
                                + right_sharp->ReadDigital(10, max_distance) * 4);
   }
 
-  if(right_side_sharp->ReadDigital(10, max_distance)) {
+  if (right_side_sharp->ReadDigital(10, max_distance)) {
     saw_right = YES;
     saw_right_time = millis();
-    }
-  
+  }
+
   switch (binary_area_cleaner_sum) {
 
     case -1:
 
-      if(saw_right == NO) last_value = LEFT;
-      else{
+      if (saw_right == NO) last_value = LEFT;
+      else {
         leftMotor.Backward(100);
-        rightMotor.Backward(100); 
+        rightMotor.Backward(100);
         delay(millis() - saw_right_time);
         last_value = RIGHT;
         saw_right = NO;
@@ -560,12 +560,12 @@ void area_cleaner_loop() {
 
       start_rebound = millis();
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
-  
+
         leftMotor.Backward(100);
         rightMotor.Backward(100);
-        
+
         if (analogRead(BACK_CNY) > 2000) {
-       
+
           if (last_cny_value == LEFT_CNY) {
             leftMotor.Forward(200);
             rightMotor.Forward(120);
@@ -586,37 +586,33 @@ void area_cleaner_loop() {
 
     case 0:  //no ve nada
 
-      
-      
+
+
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
 
         if (area_cleaner->ReadTatamiColor() == WHITE) {
           leftMotor.Forward(130);
           rightMotor.Forward(200);
           first_blind = NO;
-          } else rebound_flag = NO;
-      } 
-      else if (last_value == LEFT) {
-        
-        if(first_blind == YES) {
+        } else rebound_flag = NO;
+      } else if (last_value == LEFT) {
+
+        if (first_blind == YES) {
           leftMotor.Backward(seek_velocity);
           rightMotor.Forward(seek_velocity);
-        }
-        else {
-          rightMotor.Forward(seek_velocity + blind_turn_diference); 
+        } else {
+          rightMotor.Forward(seek_velocity + blind_turn_diference);
           leftMotor.Forward(seek_velocity);
         }
-      } 
-      else {
-        if(first_blind == YES) {
+      } else {
+        if (first_blind == YES) {
           rightMotor.Backward(seek_velocity);
           leftMotor.Forward(seek_velocity);
-        }
-        else {
-          leftMotor.Forward(seek_velocity + blind_turn_diference); 
+        } else {
+          leftMotor.Forward(seek_velocity + blind_turn_diference);
           rightMotor.Forward(seek_velocity);
         }
-        }
+      }
 
 
       break;
