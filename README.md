@@ -38,7 +38,15 @@
 
 ### C5
 ```
-// Placa en desarrollo
+#define SENSOR_1 13 // left side sharp  
+#define SENSOR_2 27 // back cny
+#define SENSOR_3 26 // right side sharp
+#define SENSOR_4 25 // right cny
+#define SENSOR_5 34 // left cny
+#define SENSOR_6 35 // left sharp
+#define SENSOR_7 32 // center sharp
+#define SENSOR_8 33 // right sharp
+
 ```
 <br>
 
