@@ -277,18 +277,34 @@ void initialize(void (*category_loop_function)()) {
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
 
 #define VEL_WHITE_FLOOR 200
-#define COMPENSATION_DEADLINE 90
-#define PID_VEL_MIN 110
+#define PID_VEL_MIN 80
+
+/*
+#define MIN_FORWARD_VEL 105
 float gain = 180;
-float kp = 10;
+float kp = 5;
 float kd = 0;
+*/
+
+#define MIN_FORWARD_VEL 170
+#define MIN_BACKWARD_VEL 80
+#define MIN_DOUBLE_FORWARD_VEL 70
+
+#define COMPENSATION_DEADLINE 90
+int base_velocity = MIN_FORWARD_VEL;
+// doble forward 70
+// doble forward 60
+
+float gain = 180;
+float kp = 4;
+float kd = 0.5;
 //#define PID_VEL_MIN 150 pista naba 7seg y pista 2019 7seg
 //#define PID_VEL_MIN 220
 bool all_white = false;
 int in_straight = NO;
 int right_vel = 0;
 int left_vel = 0;
-int base_velocity = PID_VEL_MIN;
+
 unsigned long time_stamp;
 int values_read[CNY70_CANT];
 int max_value_read[CNY70_CANT];
@@ -302,7 +318,7 @@ void Motor_control(int value) {
       time_stamp = millis();
       base_velocity += 5;
     }
-  } else base_velocity = PID_VEL_MIN;
+  } else base_velocity = MIN_FORWARD_VEL;
 
 
   if (black_side == LEFT) {
@@ -331,9 +347,9 @@ void Motor_control(int value) {
     }
   } else {
 
-    if (right_vel < COMPENSATION_DEADLINE) rightMotor.Backward(COMPENSATION_DEADLINE + (COMPENSATION_DEADLINE - right_vel));
+    if (right_vel < COMPENSATION_DEADLINE) rightMotor.Backward(MIN_BACKWARD_VEL + (COMPENSATION_DEADLINE - right_vel));
     else rightMotor.Forward(right_vel);
-    if (left_vel < COMPENSATION_DEADLINE) leftMotor.Backward(COMPENSATION_DEADLINE + (COMPENSATION_DEADLINE - left_vel));
+    if (left_vel < COMPENSATION_DEADLINE) leftMotor.Backward(MIN_BACKWARD_VEL + (COMPENSATION_DEADLINE - left_vel));
     else leftMotor.Forward(left_vel);
   }
 }
@@ -356,8 +372,8 @@ void line_follower_loop() {
   Serial.println(actual_value);
 
   error = actual_value;
-  integral += error;
-  integral = constrain(integral, -100000, 100000);
+  //integral += error;
+  //integral = constrain(integral, -100000, 100000);
 
   //all_white = actual_value < -26000;
 
