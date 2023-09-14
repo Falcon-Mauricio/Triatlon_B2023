@@ -275,7 +275,7 @@ void initialize(void (*category_loop_function)()) {
 
 // -------------------- VELOCISTA -----------------------------------------------------------------------------
 
-#define VEL_WHITE_FLOOR 100
+#define VEL_WHITE_FLOOR 150
 #define COMPENSATION_DEADLINE 80
 #define PID_VEL_MIN 110
 //#define PID_VEL_MIN 150 pista naba 7seg y pista 2019 7seg
@@ -318,12 +318,13 @@ void Motor_control(int value) {
   if (all_white) {
 
     if (black_side == RIGHT) {
-
-      leftMotor.Forward(0);
-      rightMotor.Forward(VEL_WHITE_FLOOR);
-    } else {
       rightMotor.Forward(0);
       leftMotor.Forward(VEL_WHITE_FLOOR);
+      
+
+    } else {
+      leftMotor.Forward(0);
+      rightMotor.Forward(VEL_WHITE_FLOOR);
     }
   } else {
 
