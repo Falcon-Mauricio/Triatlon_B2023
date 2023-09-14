@@ -2,6 +2,8 @@
 #include <BluetoothSerial.h>
 #include "motor.h"
 
+BluetoothSerial BT;
+
 #define DEBUG 0
 #define DEBUG_VEL 0
 // Motores
@@ -286,7 +288,7 @@ float kp = 5;
 float kd = 0;
 */
 
-#define MIN_FORWARD_VEL 170
+int MIN_FORWARD_VEL = 170;
 #define MIN_BACKWARD_VEL 80
 #define MIN_DOUBLE_FORWARD_VEL 70
 
@@ -309,6 +311,35 @@ unsigned long time_stamp;
 int values_read[CNY70_CANT];
 int max_value_read[CNY70_CANT];
 int min_value_read[CNY70_CANT];
+
+void telemetry(){
+  if(BT.available()){
+    String in = BT.readStringUntil('\n');
+    in.trim();
+    if (in == "p"){
+        while(true){
+        leftMotor.Stop();
+        rightMotor.Stop();
+
+        if (BT.available()){
+          in = BT.readStringUntil('\n');
+          in.trim();
+        }
+
+        if(in == "kpup"){ kp += 1; BT.println(kp); }
+        else if(in == "kpdw"){ kp -= 1; BT.println(kp); }
+        else if(in == "kdup"){ kd += 0.2; BT.println(kd); }
+        else if(in == "kddw"){ kd -= 0.2; BT.println(kd); }
+        else if(in == "velup"){ MIN_FORWARD_VEL += 5; BT.println(MIN_FORWARD_VEL); }
+        else if(in == "veldw"){ MIN_FORWARD_VEL -= 5; BT.println(MIN_FORWARD_VEL); }
+        if(in == "s") break;
+        in = "";
+        
+        }
+    } 
+
+  }
+}
 
 void Motor_control(int value) {
 
@@ -368,6 +399,8 @@ float pid_min_average = (kp * -15600) + ki * 0 + (kd * (-15600 - 15600));
 
 void line_follower_loop() {
 
+  telemetry();
+
   actual_value = line_follower->ReadFloor();
   Serial.println(actual_value);
 
@@ -399,6 +432,9 @@ void line_follower_setup() {
   if (DEBUG) Serial.println("en follower");
 
   //BT.begin("line_follower_debug");
+  BT.begin();
+  while (!BT.connected());
+  buzzer->Use(1000);
 
   /*
     xTaskCreatePinnedToCore(
@@ -505,15 +541,16 @@ void radio_controlled_setup() {
 // ------------------ DESPEJAR AREA ---------------------------------------------------------------------------
 
 
-#define LINE_REBOUND_TIME 1000
+#define LINE_REBOUND_TIME 600
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 
-int seek_velocity = 80;
+int seek_velocity = 100;
 int max_distance = 20;
-int blind_turn_diference = 60;
-#define TURN_ADJUSTMENT_DIFERENCE 60
-#define MAX_VELOCITY 120
+int blind_turn_diference = 70;
+#define TURN_ADJUSTMENT_DIFERENCE 90
+#define MAX_VELOCITY 100
 #define BLIND_LIMIT_TIME 3000
+#define BACK_VEL 180
 
 
 // timers
@@ -532,72 +569,82 @@ int first_loop = YES;
 // variables
 
 int binary_area_cleaner_sum;
+int previous_value = 0;
 int last_cny_value;
 
+int read_area(){
 
+  return (left_sharp->ReadDigital(10, max_distance)
+                               + center_sharp->ReadDigital(10, max_distance) * 2
+                               + right_sharp->ReadDigital(10, max_distance) * 4);
+  
+}
 
 void area_cleaner_loop() {
 
   /*
   if(first_loop){
-  leftMotor.Forward(120);
-  rightMotor.Forward(120);
+  leftMotor.Forward(170);
+  rightMotor.Forward(170);
   delay(1000);
   } 
   */
 
   area_cleaner->Calibrate();
   last_cny_value = area_cleaner->ReadTatamiColor();
-
+  
   if (last_cny_value != WHITE) binary_area_cleaner_sum = -1;
   else {
-    binary_area_cleaner_sum = (left_sharp->ReadDigital(10, max_distance)
-                               + center_sharp->ReadDigital(10, max_distance) * 2
-                               + right_sharp->ReadDigital(10, max_distance) * 4);
+    binary_area_cleaner_sum = read_area();
   }
+  /*
+  Serial.println(binary_area_cleaner_sum);
+  Serial.println(analogRead(BACK_CNY));
+  Serial.println();
+  delay(300);
+  */
 
-  if (right_side_sharp->ReadDigital(10, max_distance)) {
-    saw_right = YES;
-    saw_right_time = millis();
-  }
+  if(previous_value == 4 & binary_area_cleaner_sum == 0){
+    if(read_area() == 0){
+          last_value = RIGHT;
+    }
+  } 
+  
+  if (right_side_sharp->ReadDigital(10, max_distance)) last_value = RIGHT;
+  else if  (left_side_sharp->ReadDigital(10, max_distance)) last_value = LEFT;
+
+  previous_value = binary_area_cleaner_sum;
 
   switch (binary_area_cleaner_sum) {
 
     case -1:
-
-      if (saw_right == NO) last_value = LEFT;
-      else {
-        leftMotor.Backward(100);
-        rightMotor.Backward(100);
-        delay(millis() - saw_right_time);
-        last_value = RIGHT;
-        saw_right = NO;
-      }
-
+      
       start_rebound = millis();
       while (millis() < (start_rebound + LINE_REBOUND_TIME)) {
-
-        leftMotor.Backward(100);
-        rightMotor.Backward(100);
-
+          
+        leftMotor.Backward(BACK_VEL);
+        rightMotor.Backward(BACK_VEL);
+         
         if (analogRead(BACK_CNY) > 2000) {
 
           if (last_cny_value == LEFT_CNY) {
-            leftMotor.Forward(200);
-            rightMotor.Forward(120);
+            leftMotor.Forward(BACK_VEL + TURN_ADJUSTMENT_DIFERENCE);
+            rightMotor.Forward(BACK_VEL);
             delay(500);
 
           } else if (last_cny_value == RIGHT_CNY) {
-            leftMotor.Forward(120);
-            rightMotor.Forward(200);
+            leftMotor.Forward(BACK_VEL);
+            rightMotor.Forward(BACK_VEL + TURN_ADJUSTMENT_DIFERENCE);
             delay(500);
           }
           break;
         }
+        
       }
 
       rebound_flag = YES;
       last_rebound_time = millis();
+      
       break;
 
     case 0:  //no ve nada
@@ -605,13 +652,15 @@ void area_cleaner_loop() {
 
 
       if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES) {
-
+        
         if (area_cleaner->ReadTatamiColor() == WHITE) {
-          leftMotor.Forward(130);
-          rightMotor.Forward(200);
-          first_blind = NO;
+          leftMotor.Forward(seek_velocity);
+          rightMotor.Forward(seek_velocity + TURN_ADJUSTMENT_DIFERENCE );
+          //first_blind = NO;
         } else rebound_flag = NO;
-      } else if (last_value == LEFT) {
+      } 
+      
+      else if (last_value == LEFT) {
 
         if (first_blind == YES) {
           leftMotor.Backward(seek_velocity);
