@@ -633,7 +633,7 @@ enum CASES
 };
 
 // Constants
-#define LINE_REBOUND_TIME 800
+#define LINE_REBOUND_TIME 730
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define ON_AXIS 1
 #define ON_FORWARD 0
@@ -643,8 +643,8 @@ int seek_velocity = 80;
 int max_distance = 20;
 int blind_turn_diference = 100;
 #define TURN_ADJUSTMENT_DIFERENCE 100
-int MAX_VELOCITY = 160;
-int BACK_VEL = 160;
+int MAX_VELOCITY = 170;
+int BACK_VEL = 170;
 #define BLIND_LIMIT_TIME 2000
 
 // timers
