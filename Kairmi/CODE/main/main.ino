@@ -919,7 +919,7 @@ void area_cleaner_setup()
 void printMode(int mode)
 {
   int prev_mode = 1000;
-  String modes[MAX_MODES] =  {"LINE FOLLOW LEFT", "LINE FOLLOW RIGHT", "AREA CLEAN", "RADIO CONTROLLER"};
+  String modes[MAX_MODES] = {"LINE FOLLOW LEFT", "LINE FOLLOW RIGHT", "AREA CLEAN", "RADIO CONTROLLER"};
   String mode_text = "[mode]: ";
 
   if (prev_mode != mode)
@@ -928,7 +928,6 @@ void printMode(int mode)
     Serial.println(mode_text);
   }
 }
-
 
 enum MODE
 {
