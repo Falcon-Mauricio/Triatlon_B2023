@@ -230,6 +230,7 @@ bool frontEnemy() {
 }
 
 
+
 unsigned long tie = 0;
 int selectState() {  //sumo los valores de todos los lados || state != DERECHA_IZQUIERDA
   updateValues();

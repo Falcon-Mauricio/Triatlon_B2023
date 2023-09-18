@@ -290,7 +290,7 @@ Sharp *left_sharp = new Sharp(SENSOR_8);
 Sharp *right_sharp = new Sharp(SENSOR_5);
 Sharp *center_sharp = new Sharp(SENSOR_7);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
-Sharp *right_side_sharp = new Sharp(SENSOR_3);
+Sharp *right_side_sharp = new Sharp(SENSOR_6);
 Buzzer *buzzer = new Buzzer(BUZZER);
 int line_follower_array[] = {SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8};
 int area_cleaner_array[] = {LEFT_CNY, RIGHT_CNY};
@@ -638,7 +638,6 @@ enum CASES
 #define ON_AXIS 1
 #define ON_FORWARD 0
 
-int modo_busqueda = 0;
 int seek_velocity = 80;
 int max_distance = 20;
 int blind_turn_diference = 100;
@@ -655,17 +654,11 @@ unsigned long start_rebound;
 unsigned long saw_side_time;
 
 // flags
-int saw_right = NO;
-int saw_left = NO;
-int last_value = LEFT;
 int rebound_flag = NO;
 int first_blind = YES;
 int first_loop = YES;
 
 // variables
-
-int binary_area_cleaner_sum;
-int last_cny_value;
 
 void area_cleaner_telemetry()
 {
@@ -724,6 +717,17 @@ void area_cleaner_telemetry()
   }
 }
 
+int binaryAreaCleanerSum(int last_cny_value)
+{
+
+  if (last_cny_value != WHITE)
+  {
+    return SEE_EDGE;
+  }
+
+  return (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
+}
+
 void area_cleaner_loop()
 {
 
@@ -736,56 +740,41 @@ void area_cleaner_loop()
   */
 
   // last_change: Giro en su eje despues de rebotar, habiendo detectado en ataque
+  int last_value = RIGHT;
 
   area_cleaner->Calibrate();
-  last_cny_value = area_cleaner->ReadTatamiColor();
-  // if(last_cny_value != WHITE) BT.println("negro");
-  // if(BT_DEBUG)area_cleaner_telemetry();
+  int last_cny_value = area_cleaner->ReadTatamiColor();
 
-  if (last_cny_value != WHITE)
-  {
-    binary_area_cleaner_sum = SEE_EDGE;
-  }
-  else
-  {
-    binary_area_cleaner_sum = (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
-  }
+  int binary_area_cleaner_sum = binaryAreaCleanerSum(last_cny_value);
 
-  if (right_side_sharp->ReadDigital(10, max_distance))
+  int modo_busqueda = ON_FORWARD;
+  bool object_left_detect = left_side_sharp->ReadDigital(10, max_distance);
+  bool object_right_detect = right_side_sharp->ReadDigital(10, max_distance);
+
+  if (object_left_detect || object_right_detect)
   {
-    saw_right = YES;
     modo_busqueda = ON_AXIS;
     saw_side_time = millis();
-    last_value = RIGHT;
   }
-  else if (left_side_sharp->ReadDigital(10, max_distance))
+
+  if (object_left_detect)
   {
-    saw_left = YES;
-    modo_busqueda = ON_AXIS;
-    saw_side_time = millis();
+
     last_value = LEFT;
-  }
-
-  else
-  {
-
-    modo_busqueda = ON_FORWARD;
   }
 
   switch (binary_area_cleaner_sum)
   {
 
   case SEE_EDGE:
+  {
 
-    if (saw_right || saw_left)
+    if (object_left_detect || object_left_detect)
     {
 
       leftMotor.Backward(MAX_VELOCITY);
       rightMotor.Backward(MAX_VELOCITY);
       delay(millis() - saw_side_time);
-
-      saw_right = NO;
-      saw_left = NO;
     }
     else
     {
@@ -815,55 +804,49 @@ void area_cleaner_loop()
           break;
         }
       }
-      last_value = RIGHT;
     }
     rebound_flag = YES;
     last_rebound_time = millis();
     break;
+  }
+  case SEE_VOID:
+  { // no ve nada
 
-  case SEE_VOID: // no ve nada
+    leftMotor.Forward(seek_velocity + blind_turn_diference);
+    rightMotor.Forward(seek_velocity);
+
+    if (modo_busqueda == ON_AXIS)
+    {
+      leftMotor.Forward(seek_velocity);
+      rightMotor.Backward(seek_velocity);
+    }
 
     if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES)
     {
 
+      rebound_flag = NO;
       if (area_cleaner->ReadTatamiColor() == WHITE)
       {
         leftMotor.Forward(130);
         rightMotor.Forward(200);
         first_blind = NO;
       }
-      else
-        rebound_flag = NO;
     }
     else if (last_value == LEFT)
     {
+
+      rightMotor.Forward(seek_velocity + blind_turn_diference);
+      leftMotor.Forward(seek_velocity);
 
       if (modo_busqueda == ON_AXIS)
       {
         leftMotor.Backward(seek_velocity);
         rightMotor.Forward(seek_velocity);
       }
-      else
-      {
-        rightMotor.Forward(seek_velocity + blind_turn_diference);
-        leftMotor.Forward(seek_velocity);
-      }
-    }
-    else
-    {
-      if (modo_busqueda == ON_AXIS)
-      {
-        leftMotor.Forward(seek_velocity);
-        rightMotor.Backward(seek_velocity);
-      }
-      else
-      {
-        leftMotor.Forward(seek_velocity + blind_turn_diference);
-        rightMotor.Forward(seek_velocity);
-      }
     }
 
     break;
+  }
 
   case SEE_LEFT:
   case SEE_LEFT_CENTER:
