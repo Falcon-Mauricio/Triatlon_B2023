@@ -637,6 +637,7 @@ enum CASES
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define ON_AXIS 1
 #define ON_FORWARD 0
+#define SECURITY_TURN_TIME 100
 
 int seek_velocity = 80;
 int max_distance = 20;
@@ -644,13 +645,11 @@ int blind_turn_diference = 100;
 #define TURN_ADJUSTMENT_DIFERENCE 100
 int MAX_VELOCITY = 140;
 int BACK_VEL = 100;
-int BACK_DELAY = 1000;
 #define BLIND_LIMIT_TIME 2000
 
 // timers
 unsigned long seeking_time;
 unsigned long last_rebound_time;
-unsigned long start_rebound;
 unsigned long saw_side_time;
 
 // flags
@@ -728,6 +727,74 @@ int binaryAreaCleanerSum(int last_cny_value)
   return (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
 }
 
+void rebound(int time_rebound, int back_velocity, int last_cny_value, int last_value)
+{
+  unsigned long time = millis();
+  while (millis() < (time + time_rebound))
+  {
+
+    leftMotor.Backward(back_velocity);
+    rightMotor.Backward(back_velocity);
+
+    if (analogRead(BACK_CNY) > 2000)
+    {
+
+      if (last_cny_value == LEFT_CNY)
+      {
+        leftMotor.Forward(200);
+        rightMotor.Forward(120);
+        delay(500);
+      }
+      else if (last_cny_value == RIGHT_CNY)
+      {
+        leftMotor.Forward(120);
+        rightMotor.Forward(200);
+        delay(500);
+      }
+      break;
+    }
+  }
+
+  if (last_value == LEFT)
+  {
+    leftMotor.Backward(MAX_VELOCITY);
+    rightMotor.Forward(MAX_VELOCITY);
+  }
+  else if (last_value == RIGHT)
+  {
+    rightMotor.Backward(MAX_VELOCITY);
+    leftMotor.Forward(MAX_VELOCITY);
+  }
+  delay(SECURITY_TURN_TIME);
+}
+
+void move_on_axis(int axis)
+{
+  if (axis == LEFT)
+  {
+    rightMotor.Forward(seek_velocity);
+    leftMotor.Backward(seek_velocity);
+  }
+  else if (axis == RIGHT)
+  {
+    leftMotor.Forward(seek_velocity);
+    rightMotor.Backward(seek_velocity);
+  }
+}
+
+void move_with_chanfle(int axis)
+{
+  if (axis == LEFT)
+  {
+    leftMotor.Forward(seek_velocity + blind_turn_diference);
+    rightMotor.Forward(seek_velocity);
+  }
+  else if (axis == RIGHT)
+  {
+    rightMotor.Forward(seek_velocity + blind_turn_diference);
+    leftMotor.Forward(seek_velocity);
+  }
+}
 void area_cleaner_loop()
 {
 
@@ -740,24 +807,22 @@ void area_cleaner_loop()
   */
 
   // last_change: Giro en su eje despues de rebotar, habiendo detectado en ataque
-  int last_value = RIGHT;
-
   area_cleaner->Calibrate();
-  int last_cny_value = area_cleaner->ReadTatamiColor();
 
-  int binary_area_cleaner_sum = binaryAreaCleanerSum(last_cny_value);
-
+  int last_value = RIGHT;
   int modo_busqueda = ON_FORWARD;
-  bool object_left_detect = left_side_sharp->ReadDigital(10, max_distance);
-  bool object_right_detect = right_side_sharp->ReadDigital(10, max_distance);
+  int last_cny_value = area_cleaner->ReadTatamiColor();
+  int binary_area_cleaner_sum = binaryAreaCleanerSum(last_cny_value);
+  bool object_side_left_detect = left_side_sharp->ReadDigital(10, max_distance);
+  bool object_side_right_detect = right_side_sharp->ReadDigital(10, max_distance);
 
-  if (object_left_detect || object_right_detect)
+  if (object_side_left_detect || object_side_right_detect)
   {
     modo_busqueda = ON_AXIS;
     saw_side_time = millis();
   }
 
-  if (object_left_detect)
+  if (object_side_left_detect)
   {
 
     last_value = LEFT;
@@ -768,43 +833,16 @@ void area_cleaner_loop()
 
   case SEE_EDGE:
   {
+    int time_rebound = LINE_REBOUND_TIME;
+    int back_velocity = BACK_VEL;
 
-    if (object_left_detect || object_left_detect)
+    if (object_side_left_detect || object_side_right_detect)
     {
-
-      leftMotor.Backward(MAX_VELOCITY);
-      rightMotor.Backward(MAX_VELOCITY);
-      delay(millis() - saw_side_time);
+      time_rebound = millis() - saw_side_time;
+      back_velocity = MAX_VELOCITY;
     }
-    else
-    {
+    rebound(time_rebound, back_velocity, last_cny_value, last_value);
 
-      start_rebound = millis();
-      while (millis() < (start_rebound + LINE_REBOUND_TIME))
-      {
-
-        leftMotor.Backward(BACK_VEL);
-        rightMotor.Backward(BACK_VEL);
-
-        if (analogRead(BACK_CNY) > 2000)
-        {
-
-          if (last_cny_value == LEFT_CNY)
-          {
-            leftMotor.Forward(200);
-            rightMotor.Forward(120);
-            delay(500);
-          }
-          else if (last_cny_value == RIGHT_CNY)
-          {
-            leftMotor.Forward(120);
-            rightMotor.Forward(200);
-            delay(500);
-          }
-          break;
-        }
-      }
-    }
     rebound_flag = YES;
     last_rebound_time = millis();
     break;
@@ -812,13 +850,13 @@ void area_cleaner_loop()
   case SEE_VOID:
   { // no ve nada
 
-    leftMotor.Forward(seek_velocity + blind_turn_diference);
-    rightMotor.Forward(seek_velocity);
-
     if (modo_busqueda == ON_AXIS)
     {
-      leftMotor.Forward(seek_velocity);
-      rightMotor.Backward(seek_velocity);
+      move_on_axis(LEFT);
+    }
+    else
+    {
+      move_with_chanfle(LEFT);
     }
 
     if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES)
@@ -835,13 +873,13 @@ void area_cleaner_loop()
     else if (last_value == LEFT)
     {
 
-      rightMotor.Forward(seek_velocity + blind_turn_diference);
-      leftMotor.Forward(seek_velocity);
-
       if (modo_busqueda == ON_AXIS)
       {
-        leftMotor.Backward(seek_velocity);
-        rightMotor.Forward(seek_velocity);
+        move_on_axis(RIGHT);
+      }
+      else
+      {
+        move_with_chanfle(RIGHT);
       }
     }
 
