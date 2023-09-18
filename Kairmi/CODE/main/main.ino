@@ -2,6 +2,8 @@
 #include <BluetoothSerial.h>
 #include "motor.h"
 
+// last commit: arregle rebote trasero 
+
 BluetoothSerial BT;
 
 #define DEBUG 0
@@ -323,7 +325,7 @@ void initialize(void (*category_loop_function)())
 
 #define VEL_WHITE_FLOOR 150
 #define COMPENSATION_DEADLINE 80
-int PID_VEL_MIN = 190;
+int PID_VEL_MIN = 200;
 bool all_white = false;
 int in_straight = YES;
 int right_vel = 0;
@@ -638,6 +640,7 @@ enum CASES
 #define ON_AXIS 1
 #define ON_FORWARD 0
 #define SECURITY_TURN_TIME 100
+#define BACK_TURN_TIME 150
 
 int seek_velocity = 80;
 int max_distance = 20;
@@ -656,6 +659,7 @@ unsigned long saw_side_time;
 int rebound_flag = NO;
 int first_blind = YES;
 int first_loop = YES;
+int seek_mode = ON_AXIS;
 
 // variables
 
@@ -727,31 +731,47 @@ int binaryAreaCleanerSum(int last_cny_value)
   return (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
 }
 
+int back_detect = NO;
+unsigned long start_forward;
+
 void rebound(int time_rebound, int back_velocity, int last_cny_value, int last_value)
 {
   unsigned long time = millis();
   while (millis() < (time + time_rebound))
   {
 
-    leftMotor.Backward(back_velocity);
-    rightMotor.Backward(back_velocity);
+  
 
     if (analogRead(BACK_CNY) > 2000)
     {
-
+      digitalWrite(BUZZER, HIGH);
       if (last_cny_value == LEFT_CNY)
       {
-        leftMotor.Forward(200);
-        rightMotor.Forward(120);
-        delay(500);
+        leftMotor.Forward(seek_velocity);
+        rightMotor.Backward(seek_velocity);
+        
       }
       else if (last_cny_value == RIGHT_CNY)
       {
-        leftMotor.Forward(120);
-        rightMotor.Forward(200);
-        delay(500);
+        leftMotor.Backward(seek_velocity);
+        rightMotor.Forward(seek_velocity);
+        
       }
+      delay(BACK_TURN_TIME);
+      
+      digitalWrite(BUZZER, LOW);
+      leftMotor.Forward(MAX_VELOCITY);
+      rightMotor.Forward(MAX_VELOCITY);
+      delay(200);
+
+      seek_mode = ON_FORWARD;
       break;
+    }
+    else{
+
+      leftMotor.Backward(back_velocity);
+      rightMotor.Backward(back_velocity);
+    
     }
   }
 
@@ -797,9 +817,7 @@ void move_with_chanfle(int axis)
 }
 
 int previous_value;
-
-int modo_busqueda = ON_AXIS;
-int last_value = RIGHT;
+int last_value = LEFT;
 
 void area_cleaner_loop()
 {
@@ -828,7 +846,7 @@ void area_cleaner_loop()
 
   if (object_side_left_detect || object_side_right_detect)
   {
-    modo_busqueda = ON_AXIS;
+    seek_mode = ON_AXIS;
     saw_side_time = millis();
   }
 
@@ -851,6 +869,7 @@ void area_cleaner_loop()
     if (object_side_left_detect || object_side_right_detect)
     {
       time_rebound = millis() - saw_side_time;
+      if(time_rebound < 100) time_rebound = LINE_REBOUND_TIME;
       back_velocity = MAX_VELOCITY;
     }
     rebound(time_rebound, back_velocity, last_cny_value, last_value);
@@ -868,14 +887,14 @@ void area_cleaner_loop()
       rebound_flag = NO;
       if (area_cleaner->ReadTatamiColor() == WHITE)
       {
-        modo_busqueda == ON_FORWARD;
+        seek_mode = ON_FORWARD;
         first_blind = NO;
       }
     }
     else
     {
 
-      if (modo_busqueda == ON_AXIS)
+      if (seek_mode == ON_AXIS)
       {
         move_on_axis(last_value);
       }
