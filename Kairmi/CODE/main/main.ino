@@ -2,6 +2,8 @@
 #include <BluetoothSerial.h>
 #include "motor.h"
 
+BluetoothSerial BT;
+
 #define DEBUG 0
 #define BT_DEBUG 0
 #define DEBUG_VEL 0
@@ -288,7 +290,7 @@ Sharp *left_sharp = new Sharp(SENSOR_8);
 Sharp *right_sharp = new Sharp(SENSOR_5);
 Sharp *center_sharp = new Sharp(SENSOR_7);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
-Sharp *right_side_sharp = new Sharp(SENSOR_5);
+Sharp *right_side_sharp = new Sharp(SENSOR_6);
 Buzzer *buzzer = new Buzzer(BUZZER);
 int line_follower_array[] = {SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8};
 int area_cleaner_array[] = {LEFT_CNY, RIGHT_CNY};
@@ -617,70 +619,182 @@ void radio_controlled_setup()
 
 // ------------------ DESPEJAR AREA ---------------------------------------------------------------------------
 
+// Detection cases
+
+enum CASES
+{
+  SEE_EDGE = -1,
+  SEE_VOID = 0,
+  SEE_LEFT = 1,
+  SEE_CENTER = 2,
+  SEE_LEFT_CENTER = 3,
+  SEE_RIGHT = 4,
+  SEE_RIGHT_CENTER = 6,
+};
+
+// Constants
 #define LINE_REBOUND_TIME 1000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
-#define EN_EJE 1
-#define AVANCE 0
+#define ON_AXIS 1
+#define ON_FORWARD 0
+#define SECURITY_TURN_TIME 100
 
-int modo_busqueda = 0;
 int seek_velocity = 80;
 int max_distance = 20;
 int blind_turn_diference = 100;
 #define TURN_ADJUSTMENT_DIFERENCE 100
 int MAX_VELOCITY = 140;
 int BACK_VEL = 100;
-int BACK_DELAY = 1000;
 #define BLIND_LIMIT_TIME 2000
 
 // timers
 unsigned long seeking_time;
 unsigned long last_rebound_time;
-unsigned long start_rebound;
 unsigned long saw_side_time;
 
 // flags
-int saw_right = NO;
-int saw_left = NO;
-int last_value = LEFT;
 int rebound_flag = NO;
 int first_blind = YES;
 int first_loop = YES;
 
 // variables
 
-int binary_area_cleaner_sum;
-int last_cny_value;
-/*
-void area_cleaner_telemetry(){
-  if(BT.available()){
+void area_cleaner_telemetry()
+{
+  if (BT.available())
+  {
     String in = BT.readStringUntil('\n');
     in.trim();
-    if (in == "p"){
-        while(true){
+    if (in == "p")
+    {
+      while (true)
+      {
         leftMotor.Stop();
         rightMotor.Stop();
 
-        if (BT.available()){
+        if (BT.available())
+        {
           in = BT.readStringUntil('\n');
           in.trim();
         }
 
-        if(in == "atkup"){ MAX_VELOCITY += 5; BT.println(MAX_VELOCITY); }
-        else if(in == "atkdw"){ MAX_VELOCITY -= 5; BT.println(MAX_VELOCITY); }
-        else if(in == "seekup"){ seek_velocity += 5; BT.println(seek_velocity); }
-        else if(in == "seekdw"){ seek_velocity -= 5; BT.println(seek_velocity); }
-        else if(in == "delup"){ blind_turn_diference += 100; BT.println(blind_turn_diference); }
-        else if(in == "deldw"){ blind_turn_diference -= 100; BT.println(blind_turn_diference); }
-        if(in == "s") break;
-        in = "";
-
+        if (in == "atkup")
+        {
+          MAX_VELOCITY += 5;
+          BT.println(MAX_VELOCITY);
         }
+        else if (in == "atkdw")
+        {
+          MAX_VELOCITY -= 5;
+          BT.println(MAX_VELOCITY);
+        }
+        else if (in == "seekup")
+        {
+          seek_velocity += 5;
+          BT.println(seek_velocity);
+        }
+        else if (in == "seekdw")
+        {
+          seek_velocity -= 5;
+          BT.println(seek_velocity);
+        }
+        else if (in == "delup")
+        {
+          blind_turn_diference += 100;
+          BT.println(blind_turn_diference);
+        }
+        else if (in == "deldw")
+        {
+          blind_turn_diference -= 100;
+          BT.println(blind_turn_diference);
+        }
+        if (in == "s")
+          break;
+        in = "";
+      }
     }
-
   }
 }
-*/
 
+int binaryAreaCleanerSum(int last_cny_value)
+{
+
+  if (last_cny_value != WHITE)
+  {
+    return SEE_EDGE;
+  }
+
+  return (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
+}
+
+void rebound(int time_rebound, int back_velocity, int last_cny_value, int last_value)
+{
+  unsigned long time = millis();
+  while (millis() < (time + time_rebound))
+  {
+
+    leftMotor.Backward(back_velocity);
+    rightMotor.Backward(back_velocity);
+
+    if (analogRead(BACK_CNY) > 2000)
+    {
+
+      if (last_cny_value == LEFT_CNY)
+      {
+        leftMotor.Forward(200);
+        rightMotor.Forward(120);
+        delay(500);
+      }
+      else if (last_cny_value == RIGHT_CNY)
+      {
+        leftMotor.Forward(120);
+        rightMotor.Forward(200);
+        delay(500);
+      }
+      break;
+    }
+  }
+
+  if (last_value == LEFT)
+  {
+    leftMotor.Backward(MAX_VELOCITY);
+    rightMotor.Forward(MAX_VELOCITY);
+  }
+  else if (last_value == RIGHT)
+  {
+    rightMotor.Backward(MAX_VELOCITY);
+    leftMotor.Forward(MAX_VELOCITY);
+  }
+  delay(SECURITY_TURN_TIME);
+}
+
+void move_on_axis(int axis)
+{
+  if (axis == LEFT)
+  {
+    rightMotor.Forward(seek_velocity);
+    leftMotor.Backward(seek_velocity);
+  }
+  else if (axis == RIGHT)
+  {
+    leftMotor.Forward(seek_velocity);
+    rightMotor.Backward(seek_velocity);
+  }
+}
+
+void move_with_chanfle(int axis)
+{
+  if (axis == LEFT)
+  {
+    leftMotor.Forward(seek_velocity + blind_turn_diference);
+    rightMotor.Forward(seek_velocity);
+  }
+  else if (axis == RIGHT)
+  {
+    rightMotor.Forward(seek_velocity + blind_turn_diference);
+    leftMotor.Forward(seek_velocity);
+  }
+}
 void area_cleaner_loop()
 {
 
@@ -693,147 +807,98 @@ void area_cleaner_loop()
   */
 
   // last_change: Giro en su eje despues de rebotar, habiendo detectado en ataque
-
   area_cleaner->Calibrate();
-  last_cny_value = area_cleaner->ReadTatamiColor();
-  // if(last_cny_value != WHITE) BT.println("negro");
-  // if(BT_DEBUG)area_cleaner_telemetry();
 
-  if (last_cny_value != WHITE)
+  int last_value = RIGHT;
+  int modo_busqueda = ON_FORWARD;
+  int last_cny_value = area_cleaner->ReadTatamiColor();
+  int binary_area_cleaner_sum = binaryAreaCleanerSum(last_cny_value);
+  bool object_side_left_detect = left_side_sharp->ReadDigital(10, max_distance);
+  bool object_side_right_detect = right_side_sharp->ReadDigital(10, max_distance);
+
+  if (object_side_left_detect || object_side_right_detect)
   {
-    binary_area_cleaner_sum = -1;
-  }
-  else
-  {
-    binary_area_cleaner_sum = (left_sharp->ReadDigital(10, max_distance) + center_sharp->ReadDigital(10, max_distance) * 2 + right_sharp->ReadDigital(10, max_distance) * 4);
+    modo_busqueda = ON_AXIS;
+    saw_side_time = millis();
   }
 
-  if (right_side_sharp->ReadDigital(10, max_distance))
+  if (object_side_left_detect)
   {
-    saw_right = YES;
-    modo_busqueda = EN_EJE;
-    saw_side_time = millis();
-    last_value = RIGHT;
-  }
-  else if (left_side_sharp->ReadDigital(10, max_distance))
-  {
-    saw_left = YES;
-    modo_busqueda = EN_EJE;
-    saw_side_time = millis();
+
     last_value = LEFT;
-  }
-
-  else
-  {
-
-    modo_busqueda = AVANCE;
   }
 
   switch (binary_area_cleaner_sum)
   {
 
-  case -1:
+  case SEE_EDGE:
+  {
+    int time_rebound = LINE_REBOUND_TIME;
+    int back_velocity = BACK_VEL;
 
-    if (saw_right || saw_left)
+    if (object_side_left_detect || object_side_right_detect)
     {
-
-      leftMotor.Backward(MAX_VELOCITY);
-      rightMotor.Backward(MAX_VELOCITY);
-      delay(millis() - saw_side_time);
-
-      saw_right = NO;
-      saw_left = NO;
+      time_rebound = millis() - saw_side_time;
+      back_velocity = MAX_VELOCITY;
     }
-    else
-    {
+    rebound(time_rebound, back_velocity, last_cny_value, last_value);
 
-      start_rebound = millis();
-      while (millis() < (start_rebound + LINE_REBOUND_TIME))
-      {
-
-        leftMotor.Backward(BACK_VEL);
-        rightMotor.Backward(BACK_VEL);
-
-        if (analogRead(BACK_CNY) > 2000)
-        {
-
-          if (last_cny_value == LEFT_CNY)
-          {
-            leftMotor.Forward(200);
-            rightMotor.Forward(120);
-            delay(500);
-          }
-          else if (last_cny_value == RIGHT_CNY)
-          {
-            leftMotor.Forward(120);
-            rightMotor.Forward(200);
-            delay(500);
-          }
-          break;
-        }
-      }
-      last_value = RIGHT;
-    }
     rebound_flag = YES;
     last_rebound_time = millis();
     break;
+  }
+  case SEE_VOID:
+  { // no ve nada
 
-  case 0: // no ve nada
+    if (modo_busqueda == ON_AXIS)
+    {
+      move_on_axis(LEFT);
+    }
+    else
+    {
+      move_with_chanfle(LEFT);
+    }
 
     if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES)
     {
 
+      rebound_flag = NO;
       if (area_cleaner->ReadTatamiColor() == WHITE)
       {
         leftMotor.Forward(130);
         rightMotor.Forward(200);
         first_blind = NO;
       }
-      else
-        rebound_flag = NO;
     }
     else if (last_value == LEFT)
     {
 
-      if (modo_busqueda == EN_EJE)
+      if (modo_busqueda == ON_AXIS)
       {
-        leftMotor.Backward(seek_velocity);
-        rightMotor.Forward(seek_velocity);
+        move_on_axis(RIGHT);
       }
       else
       {
-        rightMotor.Forward(seek_velocity + blind_turn_diference);
-        leftMotor.Forward(seek_velocity);
-      }
-    }
-    else
-    {
-      if (modo_busqueda == EN_EJE)
-      {
-        leftMotor.Forward(seek_velocity);
-        rightMotor.Backward(seek_velocity);
-      }
-      else
-      {
-        leftMotor.Forward(seek_velocity + blind_turn_diference);
-        rightMotor.Forward(seek_velocity);
+        move_with_chanfle(RIGHT);
       }
     }
 
     break;
+  }
 
-  case 1:
-  case 3:
+  case SEE_LEFT:
+  case SEE_LEFT_CENTER:
     leftMotor.Forward(seek_velocity);
     rightMotor.Forward(seek_velocity + TURN_ADJUSTMENT_DIFERENCE);
     break;
 
-  case 4:
-  case 6:
+  case SEE_RIGHT:
+  case SEE_RIGHT_CENTER:
     leftMotor.Forward(seek_velocity + TURN_ADJUSTMENT_DIFERENCE);
     rightMotor.Forward(seek_velocity);
     break;
 
+  case SEE_CENTER:
   default:
     leftMotor.Forward(MAX_VELOCITY);
     rightMotor.Forward(MAX_VELOCITY);
@@ -855,7 +920,9 @@ void area_cleaner_setup()
   area_cleaner->InitializeReadings();
 
   if (DEBUG)
+  {
     Serial.println("CALIBRANDO, select");
+  }
 
   while (count_button->IsPressed() == NO)
   {
@@ -865,72 +932,85 @@ void area_cleaner_setup()
   last_rebound_time = millis();
   initialize(area_cleaner_loop);
 }
+
+#define MAX_MODES 4
+#define MIN_MODES 1
+
 // Funciones para seleccion e inicializacion de modos
-
-#define MODES 4
-
-void mode_selection()
+void printMode(int mode)
 {
+  int prev_mode = 1000;
+  String modes[MAX_MODES] = {"LINE FOLLOW LEFT", "LINE FOLLOW RIGHT", "AREA CLEAN", "RADIO CONTROLLER"};
+  String mode_text = "[mode]: ";
 
-  int counter = 0;
+  if (prev_mode != mode)
+  {
+    mode_text.concat(modes[mode + 1]);
+    Serial.println(mode_text);
+  }
+}
 
+enum MODE
+{
+  MODE_LINE_FOLLOWER_LEFT = 1,
+  MODE_LINE_FOLLOWER_RIGHT = 2,
+  MODE_AREA_CLEANER = 3,
+  MODE_RADIO_CONTROLLER = 4,
+};
+
+int swichModeByButtonPress()
+{
+  int mode = 0;
   while (true)
   {
 
     if (count_button->IsPressed() == YES)
     {
+      if (++mode > MAX_MODES)
+      {
+        mode = MIN_MODES;
+      }
 
-      counter++;
-      if (counter > MODES)
-        counter = 1;
-
-      buzzer->Beep(counter, 100);
-      // Serial.println("Counter %f", counter);
+      buzzer->Beep(mode, 100);
       delay(100);
     }
-    if (confirm_button->IsPressed() == YES && counter != 0)
+    if (confirm_button->IsPressed() == YES && mode != 0)
     {
       break;
     }
   }
-  switch (counter)
-  {
+  printMode(mode);
+  return mode;
+}
 
-  case 1:
+void mode_selection()
+{
+
+  int mode = swichModeByButtonPress();
+  switch (mode)
+  {
+  case MODE_LINE_FOLLOWER_LEFT:
+  {
     black_side = LEFT;
     line_follower_setup();
-    if (DEBUG)
-      Serial.println("seguidor de linea");
-
     break;
-
-  case 2:
+  }
+  case MODE_LINE_FOLLOWER_RIGHT:
+  {
     black_side = RIGHT;
     line_follower_setup();
-    if (DEBUG)
-    {
-      Serial.println("line follower");
-    }
-
     break;
-
-  case 3:
+  }
+  case MODE_AREA_CLEANER:
+  {
     area_cleaner_setup();
-    if (DEBUG)
-    {
-      Serial.println("area cleaner");
-    }
-
     break;
-
-  case 4:
+  }
+  case MODE_RADIO_CONTROLLER:
+  {
     radio_controlled_setup();
-    if (DEBUG)
-    {
-      Serial.println("radio_control");
-    }
-
     break;
+  }
   }
 }
 
