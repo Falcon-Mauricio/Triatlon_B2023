@@ -2,6 +2,8 @@
 #include <BluetoothSerial.h>
 #include "motor.h"
 
+BluetoothSerial BT;
+
 #define DEBUG 0
 #define BT_DEBUG 0
 #define DEBUG_VEL 0
@@ -288,7 +290,7 @@ Sharp *left_sharp = new Sharp(SENSOR_8);
 Sharp *right_sharp = new Sharp(SENSOR_5);
 Sharp *center_sharp = new Sharp(SENSOR_7);
 Sharp *left_side_sharp = new Sharp(SENSOR_1);
-Sharp *right_side_sharp = new Sharp(SENSOR_5);
+Sharp *right_side_sharp = new Sharp(SENSOR_3);
 Buzzer *buzzer = new Buzzer(BUZZER);
 int line_follower_array[] = {SENSOR_1, SENSOR_2, SENSOR_3, SENSOR_4, SENSOR_5, SENSOR_6, SENSOR_7, SENSOR_8};
 int area_cleaner_array[] = {LEFT_CNY, RIGHT_CNY};
@@ -618,18 +620,23 @@ void radio_controlled_setup()
 // ------------------ DESPEJAR AREA ---------------------------------------------------------------------------
 
 // Detection cases
-#define SEE_EDGE -1
-#define SEE_VOID 0
-#define SEE_LEFT_CENTER 3
-#define SEE_LEFT 1
-#define SEE_RIGHT 4
-#define SEE_RIGHT_CENTER 6
+
+enum CASES
+{
+  SEE_EDGE = -1,
+  SEE_VOID = 0,
+  SEE_LEFT = 1,
+  SEE_CENTER = 2,
+  SEE_LEFT_CENTER = 3,
+  SEE_RIGHT = 4,
+  SEE_RIGHT_CENTER = 6,
+};
 
 // Constants
 #define LINE_REBOUND_TIME 1000
 #define LIMIT_BLIND_ADVANCING_TIME 1000
-#define EN_EJE 1
-#define AVANCE 0
+#define ON_AXIS 1
+#define ON_FORWARD 0
 
 int modo_busqueda = 0;
 int seek_velocity = 80;
@@ -747,14 +754,14 @@ void area_cleaner_loop()
   if (right_side_sharp->ReadDigital(10, max_distance))
   {
     saw_right = YES;
-    modo_busqueda = EN_EJE;
+    modo_busqueda = ON_AXIS;
     saw_side_time = millis();
     last_value = RIGHT;
   }
   else if (left_side_sharp->ReadDigital(10, max_distance))
   {
     saw_left = YES;
-    modo_busqueda = EN_EJE;
+    modo_busqueda = ON_AXIS;
     saw_side_time = millis();
     last_value = LEFT;
   }
@@ -762,7 +769,7 @@ void area_cleaner_loop()
   else
   {
 
-    modo_busqueda = AVANCE;
+    modo_busqueda = ON_FORWARD;
   }
 
   switch (binary_area_cleaner_sum)
@@ -814,7 +821,7 @@ void area_cleaner_loop()
     last_rebound_time = millis();
     break;
 
-  case SEE_EDGE: // no ve nada
+  case SEE_VOID: // no ve nada
 
     if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES)
     {
@@ -831,7 +838,7 @@ void area_cleaner_loop()
     else if (last_value == LEFT)
     {
 
-      if (modo_busqueda == EN_EJE)
+      if (modo_busqueda == ON_AXIS)
       {
         leftMotor.Backward(seek_velocity);
         rightMotor.Forward(seek_velocity);
@@ -844,7 +851,7 @@ void area_cleaner_loop()
     }
     else
     {
-      if (modo_busqueda == EN_EJE)
+      if (modo_busqueda == ON_AXIS)
       {
         leftMotor.Forward(seek_velocity);
         rightMotor.Backward(seek_velocity);
@@ -870,6 +877,7 @@ void area_cleaner_loop()
     rightMotor.Forward(seek_velocity);
     break;
 
+  case SEE_CENTER:
   default:
     leftMotor.Forward(MAX_VELOCITY);
     rightMotor.Forward(MAX_VELOCITY);
@@ -891,7 +899,9 @@ void area_cleaner_setup()
   area_cleaner->InitializeReadings();
 
   if (DEBUG)
+  {
     Serial.println("CALIBRANDO, select");
+  }
 
   while (count_button->IsPressed() == NO)
   {
@@ -901,12 +911,15 @@ void area_cleaner_setup()
   last_rebound_time = millis();
   initialize(area_cleaner_loop);
 }
-// Funciones para seleccion e inicializacion de modos
 
+#define MAX_MODES 4
+#define MIN_MODES 1
+
+// Funciones para seleccion e inicializacion de modos
 void printMode(int mode)
 {
   int prev_mode = 1000;
-  String modes = [ "LINE FOLLOW LEFT", "LINE FOLLOW RIGHT", "AREA CLEAN", "RADIO CONTROLLER" ];
+  String modes[MAX_MODES] =  {"LINE FOLLOW LEFT", "LINE FOLLOW RIGHT", "AREA CLEAN", "RADIO CONTROLLER"};
   String mode_text = "[mode]: ";
 
   if (prev_mode != mode)
@@ -916,7 +929,6 @@ void printMode(int mode)
   }
 }
 
-#define MODES 4
 
 enum MODE
 {
@@ -926,23 +938,20 @@ enum MODE
   MODE_RADIO_CONTROLLER = 4,
 };
 
-void mode_selection()
+int swichModeByButtonPress()
 {
-
   int mode = 0;
-
   while (true)
   {
 
-    if (mode->IsPressed() == YES)
+    if (count_button->IsPressed() == YES)
     {
-
-      mode++;
-      if (mode > MODES)
-        mode = 1;
+      if (++mode > MAX_MODES)
+      {
+        mode = MIN_MODES;
+      }
 
       buzzer->Beep(mode, 100);
-      // Serial.println("Counter %f", mode);
       delay(100);
     }
     if (confirm_button->IsPressed() == YES && mode != 0)
@@ -950,8 +959,14 @@ void mode_selection()
       break;
     }
   }
-
   printMode(mode);
+  return mode;
+}
+
+void mode_selection()
+{
+
+  int mode = swichModeByButtonPress();
   switch (mode)
   {
   case MODE_LINE_FOLLOWER_LEFT:
@@ -969,7 +984,6 @@ void mode_selection()
   case MODE_AREA_CLEANER:
   {
     area_cleaner_setup();
-
     break;
   }
   case MODE_RADIO_CONTROLLER:
