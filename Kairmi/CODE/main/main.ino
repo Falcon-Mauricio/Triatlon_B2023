@@ -633,7 +633,7 @@ enum CASES
 };
 
 // Constants
-#define LINE_REBOUND_TIME 1000
+#define LINE_REBOUND_TIME 800
 #define LIMIT_BLIND_ADVANCING_TIME 1000
 #define ON_AXIS 1
 #define ON_FORWARD 0
@@ -643,8 +643,8 @@ int seek_velocity = 80;
 int max_distance = 20;
 int blind_turn_diference = 100;
 #define TURN_ADJUSTMENT_DIFERENCE 100
-int MAX_VELOCITY = 140;
-int BACK_VEL = 100;
+int MAX_VELOCITY = 160;
+int BACK_VEL = 160;
 #define BLIND_LIMIT_TIME 2000
 
 // timers
@@ -795,6 +795,12 @@ void move_with_chanfle(int axis)
     leftMotor.Forward(seek_velocity);
   }
 }
+
+int previous_value;
+
+int modo_busqueda = ON_AXIS;
+int last_value = RIGHT;
+
 void area_cleaner_loop()
 {
 
@@ -809,12 +815,16 @@ void area_cleaner_loop()
   // last_change: Giro en su eje despues de rebotar, habiendo detectado en ataque
   area_cleaner->Calibrate();
 
-  int last_value = RIGHT;
-  int modo_busqueda = ON_FORWARD;
+  
   int last_cny_value = area_cleaner->ReadTatamiColor();
   int binary_area_cleaner_sum = binaryAreaCleanerSum(last_cny_value);
   bool object_side_left_detect = left_side_sharp->ReadDigital(10, max_distance);
   bool object_side_right_detect = right_side_sharp->ReadDigital(10, max_distance);
+
+  if(binary_area_cleaner_sum == SEE_VOID){
+    if(previous_value == SEE_RIGHT) last_value = RIGHT;
+    else if(previous_value == SEE_LEFT) last_value = LEFT;
+  }
 
   if (object_side_left_detect || object_side_right_detect)
   {
@@ -827,6 +837,8 @@ void area_cleaner_loop()
 
     last_value = LEFT;
   }
+
+  previous_value = binary_area_cleaner_sum;
 
   switch (binary_area_cleaner_sum)
   {
@@ -850,36 +862,26 @@ void area_cleaner_loop()
   case SEE_VOID:
   { // no ve nada
 
-    if (modo_busqueda == ON_AXIS)
-    {
-      move_on_axis(LEFT);
-    }
-    else
-    {
-      move_with_chanfle(LEFT);
-    }
-
     if (millis() > last_rebound_time + BLIND_LIMIT_TIME && rebound_flag == YES)
     {
 
       rebound_flag = NO;
       if (area_cleaner->ReadTatamiColor() == WHITE)
       {
-        leftMotor.Forward(130);
-        rightMotor.Forward(200);
+        modo_busqueda == ON_FORWARD;
         first_blind = NO;
       }
     }
-    else if (last_value == LEFT)
+    else
     {
 
       if (modo_busqueda == ON_AXIS)
       {
-        move_on_axis(RIGHT);
+        move_on_axis(last_value);
       }
       else
       {
-        move_with_chanfle(RIGHT);
+        move_with_chanfle(last_value);
       }
     }
 
