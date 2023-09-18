@@ -648,7 +648,7 @@ int blind_turn_diference = 100;
 #define TURN_ADJUSTMENT_DIFERENCE 100
 int MAX_VELOCITY = 170;
 int BACK_VEL = 170;
-#define BLIND_LIMIT_TIME 2000
+#define BLIND_LIMIT_TIME 200
 
 // timers
 unsigned long seeking_time;
@@ -744,7 +744,6 @@ void rebound(int time_rebound, int back_velocity, int last_cny_value, int last_v
 
     if (analogRead(BACK_CNY) > 2000)
     {
-      digitalWrite(BUZZER, HIGH);
       if (last_cny_value == LEFT_CNY)
       {
         leftMotor.Forward(seek_velocity);
@@ -759,7 +758,7 @@ void rebound(int time_rebound, int back_velocity, int last_cny_value, int last_v
       }
       delay(BACK_TURN_TIME);
       
-      digitalWrite(BUZZER, LOW);
+      
       leftMotor.Forward(MAX_VELOCITY);
       rightMotor.Forward(MAX_VELOCITY);
       delay(200);
